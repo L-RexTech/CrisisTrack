@@ -25,10 +25,20 @@ export interface Earthquake {
   url: string;
 }
 
+export interface Disaster {
+  id: string;
+  name: string;
+  type: string;
+  country: string;
+  date: string;
+  status: string;
+}
+
 export interface MarketData {
   crypto: CryptoPrice[];
   rates: ExchangeRate | null;
   earthquakes: Earthquake[];
+  disasters: Disaster[];
   lastUpdated: Date | null;
   loading: boolean;
   error: string | null;
@@ -36,7 +46,7 @@ export interface MarketData {
 
 async function fetchCrypto(): Promise<CryptoPrice[]> {
   const res = await fetch(
-    "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin,ethereum,gold&order=market_cap_desc&per_page=10&page=1&sparkline=true&price_change_percentage=7d",
+    "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin,ethereum,pax-gold&order=market_cap_desc&per_page=10&page=1&sparkline=true&price_change_percentage=7d",
     { headers: { Accept: "application/json" } }
   );
   if (!res.ok) throw new Error("CoinGecko rate limited");
@@ -69,8 +79,57 @@ async function fetchEarthquakes(): Promise<Earthquake[]> {
   }));
 }
 
-const CACHE_KEY = "crisis_market_cache_v3";
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const FALLBACK_DISASTERS: Disaster[] = [
+  { id: "f1", name: "Earthquake — 7.6M, Mindanao, Philippines", type: "Earthquake", country: "Philippines", date: "2025-12-02", status: "ongoing" },
+  { id: "f2", name: "Floods — South Asia Monsoon Season", type: "Flood", country: "Bangladesh", date: "2025-08-15", status: "ongoing" },
+  { id: "f3", name: "Cyclone Chido — Mozambique Channel", type: "Cyclone", country: "Mozambique", date: "2025-12-14", status: "past" },
+  { id: "f4", name: "Epidemic — Mpox Outbreak, DRC", type: "Epidemic", country: "DRC", date: "2024-09-01", status: "ongoing" },
+  { id: "f5", name: "Drought — East Africa (5th consecutive)", type: "Drought", country: "Somalia", date: "2024-03-01", status: "ongoing" },
+  { id: "f6", name: "Volcano Eruption — Ruang Volcano", type: "Volcano", country: "Indonesia", date: "2024-04-17", status: "past" },
+  { id: "f7", name: "Landslide — Enga Province", type: "Landslide", country: "Papua New Guinea", date: "2024-05-24", status: "past" },
+  { id: "f8", name: "Wildfire — Chile Valparaíso Region", type: "Technological Disaster", country: "Chile", date: "2024-02-02", status: "past" },
+];
+
+async function fetchDisasters(): Promise<Disaster[]> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 6000);
+  try {
+    const res = await fetch(
+      "https://api.reliefweb.int/v1/disasters?appname=crisistrack&limit=10&sort[]=date:desc&fields[include][]=name&fields[include][]=date&fields[include][]=type&fields[include][]=country&fields[include][]=status",
+      { headers: { Accept: "application/json" }, signal: controller.signal }
+    );
+    clearTimeout(timeout);
+    if (!res.ok) throw new Error("ReliefWeb fetch failed");
+    const json = await res.json();
+    const live = (json.data || []).map((d: any) => ({
+      id: String(d.id),
+      name: d.fields.name ?? "Unknown",
+      type: d.fields.type?.[0]?.name ?? "Disaster",
+      country: d.fields.country?.[0]?.name ?? "Unknown",
+      date: d.fields.date?.event ?? d.fields.date?.created ?? "",
+      status: d.fields.status ?? "ongoing",
+    }));
+    return live.length ? live : FALLBACK_DISASTERS;
+  } catch {
+    clearTimeout(timeout);
+    return FALLBACK_DISASTERS;
+  }
+}
+
+// Curated list of major active conflicts — updated periodically
+export const ACTIVE_CONFLICTS = [
+  { name: "Russia–Ukraine War", region: "Europe", intensity: 95, since: "Feb 2022", casualties: "~600K+", color: "#e05050" },
+  { name: "Gaza / Israel War", region: "Middle East", intensity: 93, since: "Oct 2023", casualties: "~47K+", color: "#e05050" },
+  { name: "Sudan Civil War", region: "Africa", intensity: 82, since: "Apr 2023", casualties: "~150K+", color: "#dca028" },
+  { name: "Myanmar Civil War", region: "SE Asia", intensity: 74, since: "Feb 2021", casualties: "~50K+", color: "#dca028" },
+  { name: "DRC–M23 Conflict", region: "Africa", intensity: 70, since: "2012/2022", casualties: "~10M displaced", color: "#dca028" },
+  { name: "Haiti Gang Crisis", region: "Caribbean", intensity: 60, since: "2021", casualties: "~5K+", color: "#00c8ff" },
+  { name: "Ethiopia–Amhara", region: "Africa", intensity: 55, since: "2023", casualties: "~10K+", color: "#00c8ff" },
+  { name: "Mexico Cartel Wars", region: "N. America", intensity: 48, since: "ongoing", casualties: "~30K/yr", color: "#a07ae0" },
+] as const;
+
+const CACHE_KEY = "crisis_market_cache_v6";
+const CACHE_TTL = 5 * 60 * 1000;
 
 function getCached(): { data: Partial<MarketData>; ts: number } | null {
   try {
@@ -93,6 +152,7 @@ export function useMarketData() {
     crypto: [],
     rates: null,
     earthquakes: [],
+    disasters: [],
     lastUpdated: null,
     loading: true,
     error: null,
@@ -109,6 +169,7 @@ export function useMarketData() {
         crypto: cached.data.crypto ?? [],
         rates: cached.data.rates ?? null,
         earthquakes: cached.data.earthquakes ?? [],
+        disasters: cached.data.disasters ?? [],
         lastUpdated: new Date(cached.ts),
         loading: false,
         error: null,
@@ -116,26 +177,26 @@ export function useMarketData() {
       return;
     }
 
-    const results = await Promise.allSettled([fetchCrypto(), fetchRates(), fetchEarthquakes()]);
+    const results = await Promise.allSettled([
+      fetchCrypto(),
+      fetchRates(),
+      fetchEarthquakes(),
+      fetchDisasters(),
+    ]);
 
-    const crypto = results[0].status === "fulfilled" ? (results[0].value as CryptoPrice[]) : (cached?.data.crypto ?? []);
-    const rates = results[1].status === "fulfilled" ? (results[1].value as ExchangeRate) : (cached?.data.rates ?? null);
+    const crypto    = results[0].status === "fulfilled" ? (results[0].value as CryptoPrice[]) : (cached?.data.crypto ?? []);
+    const rates     = results[1].status === "fulfilled" ? (results[1].value as ExchangeRate)  : (cached?.data.rates ?? null);
     const earthquakes = results[2].status === "fulfilled" ? (results[2].value as Earthquake[]) : (cached?.data.earthquakes ?? []);
+    const disasters = results[3].status === "fulfilled" ? (results[3].value as Disaster[])    : (cached?.data.disasters ?? []);
 
-    const anyError = results.filter((r) => r.status === "rejected");
-    const errorMsg = anyError.length > 0 ? "Some data sources unavailable — showing cached data" : null;
+    const errorMsg = results.some((r) => r.status === "rejected")
+      ? "Some data sources unavailable — showing cached data"
+      : null;
 
-    const newData = { crypto, rates, earthquakes };
+    const newData = { crypto, rates, earthquakes, disasters };
     setCache(newData);
 
-    setState({
-      crypto,
-      rates,
-      earthquakes,
-      lastUpdated: new Date(),
-      loading: false,
-      error: errorMsg,
-    });
+    setState({ crypto, rates, earthquakes, disasters, lastUpdated: new Date(), loading: false, error: errorMsg });
   }, []);
 
   useEffect(() => {
