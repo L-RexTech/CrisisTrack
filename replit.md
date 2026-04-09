@@ -1,4 +1,31 @@
-# Workspace
+# CrisisTrack — Global Disruption Monitor
+
+## Overview
+
+A futuristic dark-themed financial & global events dashboard deployable to Vercel or GitHub Pages as a static site. No backend required.
+
+## Artifacts
+
+- **crisis-dashboard** (at `/`) — main React + Vite dashboard app
+- **api-server** (at `/api`) — shared backend (not used by dashboard)
+
+## Free APIs Used (zero subscription, no credit card)
+
+| Data | API | Auth required |
+|------|-----|---------------|
+| Crypto prices + sparklines | CoinGecko v3 | None |
+| FX rates (EUR, GBP, JPY, CHF) | open.er-api.com | None |
+| Seismic events | USGS Earthquake Hazards Feed | None |
+
+## Deploying to Vercel / GitHub Pages
+
+For **Vercel**: push the repo, set root to `artifacts/crisis-dashboard`, build command `pnpm run build`, output dir `dist/public`.
+
+For **GitHub Pages**: run `pnpm --filter @workspace/crisis-dashboard run build` and serve the `dist/public` folder.
+
+---
+
+# Workspace (original)
 
 ## Overview
 

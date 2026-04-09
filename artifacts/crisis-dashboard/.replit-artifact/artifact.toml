@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "CrisisTrack Dashboard"
+version = "1.0.0"
+id = "artifacts/crisis-dashboard"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24889
+
+[services.development]
+run = "pnpm --filter @workspace/crisis-dashboard run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/crisis-dashboard", "run", "build" ]
+publicDir = "artifacts/crisis-dashboard/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24889"
+BASE_PATH = "/"

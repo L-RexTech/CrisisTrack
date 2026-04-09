@@ -1,0 +1,1203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CrisisTrack — Global Disruption Monitor</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg:        #0d0f12;
+    --bg2:       #13161b;
+    --bg3:       #1a1e25;
+    --border:    rgba(255,255,255,0.07);
+    --border2:   rgba(255,255,255,0.12);
+    --text:      #e2e0d8;
+    --text2:     #8a8880;
+    --text3:     #555350;
+    --gold:      #c9922a;
+    --gold-dim:  rgba(201,146,42,0.15);
+    --red:       #d64e4e;
+    --red-dim:   rgba(214,78,78,0.12);
+    --blue:      #4a8fd4;
+    --blue-dim:  rgba(74,143,212,0.12);
+    --green:     #4aad7a;
+    --green-dim: rgba(74,173,122,0.12);
+    --purple:    #8b6fd4;
+    --warn:      #c97a2a;
+    --warn-dim:  rgba(201,122,42,0.15);
+    --mono:      'IBM Plex Mono', monospace;
+    --sans:      'IBM Plex Sans', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .shell {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 20px 24px 32px;
+  }
+
+  /* ── TOP BAR ── */
+  .topbar {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .topbar-left { display: flex; align-items: center; gap: 14px; }
+  .logo-mark {
+    width: 36px; height: 36px;
+    background: var(--gold-dim);
+    border: 1px solid var(--gold);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--gold);
+    letter-spacing: -1px;
+  }
+  .topbar-title { font-size: 15px; font-weight: 500; color: var(--text); letter-spacing: -0.2px; }
+  .topbar-sub { font-size: 11px; color: var(--text3); margin-top: 2px; font-family: var(--mono); }
+  .topbar-right { display: flex; gap: 8px; align-items: center; margin-top: 2px; flex-wrap: wrap; }
+  .badge {
+    font-size: 11px; font-family: var(--mono);
+    padding: 3px 10px;
+    border-radius: 3px;
+    border: 1px solid;
+    cursor: default;
+  }
+  .badge-crisis { background: var(--red-dim); color: var(--red); border-color: var(--red); }
+  .badge-ok     { background: var(--green-dim); color: var(--green); border-color: var(--green); }
+  .badge-warn   { background: var(--warn-dim); color: var(--warn); border-color: var(--warn); }
+  .badge-info   { background: var(--blue-dim); color: var(--blue); border-color: rgba(74,143,212,0.3); }
+
+  /* ── STAT ROW ── */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .stat-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .stat-card:hover { border-color: var(--border2); }
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    border-radius: 8px 8px 0 0;
+  }
+  .stat-card.gold::before   { background: var(--gold); }
+  .stat-card.red::before    { background: var(--red); }
+  .stat-card.purple::before { background: var(--purple); }
+  .stat-card.blue::before   { background: var(--blue); }
+
+  .stat-label { font-size: 11px; color: var(--text3); font-family: var(--mono); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .stat-val   { font-size: 24px; font-weight: 300; color: var(--text); letter-spacing: -0.5px; font-family: var(--mono); min-height: 32px; }
+  .stat-delta { font-size: 11px; margin-top: 4px; font-family: var(--mono); min-height: 16px; }
+  .stat-api   { font-size: 10px; color: var(--text3); margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); font-family: var(--mono); }
+  .up { color: var(--green); }
+  .dn { color: var(--red); }
+
+  /* ── LOADING / ERROR STATES ── */
+  .loading { color: var(--text3); font-family: var(--mono); font-size: 12px; }
+  .error   { color: var(--red);   font-family: var(--mono); font-size: 11px; }
+  .skeleton {
+    background: linear-gradient(90deg, var(--bg3) 25%, var(--bg2) 50%, var(--bg3) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s infinite;
+    border-radius: 3px;
+    height: 1em;
+    display: inline-block;
+    width: 100%;
+  }
+  @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+  /* ── MAIN GRID ── */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .bottom-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+  }
+
+  /* ── CARDS ── */
+  .card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    transition: border-color 0.2s;
+  }
+  .card:hover { border-color: var(--border2); }
+  .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+    gap: 8px;
+  }
+  .card-title { font-size: 11px; font-weight: 500; color: var(--text2); text-transform: uppercase; letter-spacing: 0.05em; font-family: var(--mono); }
+  .endpoint-tag {
+    font-size: 10px; font-family: var(--mono);
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 2px 8px;
+    color: var(--text3);
+    white-space: nowrap;
+  }
+
+  /* ── PERIOD PILLS ── */
+  .period-pills { display: flex; gap: 4px; }
+  .pill {
+    font-size: 10px; font-family: var(--mono);
+    padding: 2px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    color: var(--text3);
+    background: transparent;
+    transition: all 0.15s;
+  }
+  .pill:hover { border-color: var(--border2); color: var(--text2); }
+  .pill.active { background: var(--gold-dim); color: var(--gold); border-color: var(--gold); }
+
+  /* ── CHART ── */
+  .chart-wrap { position: relative; height: 200px; }
+
+  /* ── LEGEND ── */
+  .legend { display: flex; gap: 16px; margin-top: 10px; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text3); font-family: var(--mono); }
+  .legend-line { width: 20px; height: 2px; border-radius: 1px; }
+
+  /* ── RANKING LIST ── */
+  .asset-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .asset-row:last-child { border-bottom: none; }
+  .rank-num { font-size: 11px; color: var(--text3); font-family: var(--mono); min-width: 16px; }
+  .asset-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .asset-name { font-size: 12px; color: var(--text); flex: 1; }
+  .score-bar-wrap { flex: 1.5; height: 4px; background: var(--bg3); border-radius: 2px; overflow: hidden; }
+  .score-bar-fill { height: 100%; border-radius: 2px; transition: width 0.6s ease; }
+  .asset-pct { font-size: 12px; font-family: var(--mono); font-weight: 500; min-width: 60px; text-align: right; }
+
+  /* ── DISRUPTION BARS ── */
+  .dis-row { margin-bottom: 12px; }
+  .dis-row:last-child { margin-bottom: 0; }
+  .dis-label-row { display: flex; justify-content: space-between; margin-bottom: 5px; }
+  .dis-name { font-size: 12px; color: var(--text2); }
+  .dis-score { font-size: 12px; font-family: var(--mono); font-weight: 500; color: var(--text); }
+  .dis-track { height: 6px; background: var(--bg3); border-radius: 3px; overflow: hidden; }
+  .dis-fill { height: 100%; border-radius: 3px; transition: width 0.6s ease; }
+
+  /* ── CORRELATION CHART ── */
+  .corr-wrap { position: relative; height: 120px; margin-bottom: 10px; }
+  .corr-stat { font-size: 12px; color: var(--text2); line-height: 1.7; }
+  .corr-val { font-weight: 500; color: var(--text); font-family: var(--mono); }
+
+  /* ── NEWS ── */
+  .news-item { padding: 9px 0; border-bottom: 1px solid var(--border); }
+  .news-item:last-child { border-bottom: none; padding-bottom: 0; }
+  .news-headline {
+    font-size: 12px; color: var(--text); line-height: 1.5; margin-bottom: 4px;
+    text-decoration: none; display: block;
+  }
+  a.news-headline:hover { color: var(--gold); }
+  .news-meta { display: flex; gap: 10px; font-size: 10px; font-family: var(--mono); align-items: center; }
+  .news-neg  { color: var(--red); }
+  .news-pos  { color: var(--green); }
+  .news-neu  { color: var(--text3); }
+  .news-tag  { color: var(--text3); }
+  .news-time { color: var(--text3); margin-left: auto; }
+  .news-source { color: var(--blue); }
+
+  /* ── REFRESH BUTTON ── */
+  .refresh-btn {
+    font-size: 10px; font-family: var(--mono);
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: 3px;
+    padding: 4px 12px;
+    color: var(--text2);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .refresh-btn:hover { border-color: var(--gold); color: var(--gold); }
+  .refresh-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .spinning { animation: spin 1s linear infinite; display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── CONFIG PANEL ── */
+  .config-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 100;
+    display: none;
+    align-items: center;
+    justify-content: center;
+  }
+  .config-overlay.open { display: flex; }
+  .config-panel {
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 10px;
+    padding: 24px;
+    width: 480px;
+    max-width: 95vw;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+  .config-title { font-size: 14px; font-weight: 500; margin-bottom: 6px; }
+  .config-desc  { font-size: 12px; color: var(--text3); margin-bottom: 20px; font-family: var(--mono); }
+  .config-field { margin-bottom: 16px; }
+  .config-label { font-size: 11px; color: var(--text2); font-family: var(--mono); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .config-sublabel { font-size: 10px; color: var(--text3); font-family: var(--mono); margin-bottom: 6px; }
+  .config-input {
+    width: 100%; background: var(--bg3); border: 1px solid var(--border2);
+    border-radius: 4px; padding: 8px 10px; color: var(--text); font-family: var(--mono);
+    font-size: 12px; outline: none; transition: border-color 0.15s;
+  }
+  .config-input:focus { border-color: var(--gold); }
+  .config-input::placeholder { color: var(--text3); }
+  .config-row { display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end; }
+  .btn-primary {
+    background: var(--gold-dim); border: 1px solid var(--gold); color: var(--gold);
+    border-radius: 4px; padding: 7px 20px; font-family: var(--mono); font-size: 12px;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .btn-primary:hover { background: rgba(201,146,42,0.25); }
+  .btn-ghost {
+    background: transparent; border: 1px solid var(--border2); color: var(--text2);
+    border-radius: 4px; padding: 7px 16px; font-family: var(--mono); font-size: 12px;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .btn-ghost:hover { border-color: var(--border2); color: var(--text); }
+  .config-link {
+    font-size: 10px; font-family: var(--mono); color: var(--blue); cursor: pointer;
+    text-decoration: none; margin-left: 6px;
+  }
+  .config-link:hover { text-decoration: underline; }
+
+  /* ── COUNTDOWN ── */
+  #countdown { font-family: var(--mono); }
+
+  /* ── SCROLLBAR ── */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 2px; }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 900px) {
+    .stat-grid { grid-template-columns: repeat(2, 1fr); }
+    .main-grid { grid-template-columns: 1fr; }
+    .bottom-grid { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 480px) {
+    .stat-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- CONFIG PANEL OVERLAY -->
+<div class="config-overlay" id="configOverlay">
+  <div class="config-panel">
+    <div class="config-title">API Configuration</div>
+    <div class="config-desc">Enter your free API keys. Keys are stored in localStorage (browser only, never sent to any server).</div>
+
+    <div class="config-field">
+      <div class="config-label">Alpha Vantage
+        <a class="config-link" href="https://www.alphavantage.co/support/#api-key" target="_blank">→ Get free key</a>
+      </div>
+      <div class="config-sublabel">Used for: Oil (BZ) price, S&P 500 (SPY) price</div>
+      <input class="config-input" id="key-av" type="password" placeholder="Your Alpha Vantage API key">
+    </div>
+
+    <div class="config-field">
+      <div class="config-label">Metals-API / Metals.live
+        <a class="config-link" href="https://metals-api.com/pricing" target="_blank">→ Get free key</a>
+      </div>
+      <div class="config-sublabel">Used for: Gold (XAU/USD) price — fallback: Alpha Vantage GLD ETF</div>
+      <input class="config-input" id="key-metals" type="password" placeholder="Your Metals-API key (optional)">
+    </div>
+
+    <div class="config-field">
+      <div class="config-label">FRED (Federal Reserve)
+        <a class="config-link" href="https://fred.stlouisfed.org/docs/api/api_key.html" target="_blank">→ Get free key</a>
+      </div>
+      <div class="config-sublabel">Used for: 30yr mortgage rate (MORTGAGE30US), DXY index</div>
+      <input class="config-input" id="key-fred" type="password" placeholder="Your FRED API key">
+    </div>
+
+    <div class="config-field">
+      <div class="config-label">News API
+        <a class="config-link" href="https://newsapi.org/register" target="_blank">→ Get free key</a>
+      </div>
+      <div class="config-sublabel">Used for: Live geopolitical & financial headlines with sentiment</div>
+      <input class="config-input" id="key-news" type="password" placeholder="Your NewsAPI key">
+    </div>
+
+    <div class="config-field">
+      <div class="config-label">CoinGecko
+        <a class="config-link" href="https://www.coingecko.com/en/api" target="_blank">→ Free, no key needed</a>
+      </div>
+      <div class="config-sublabel">Used for: Bitcoin price & market data — no key required ✓</div>
+    </div>
+
+    <div class="config-row">
+      <button class="btn-ghost" onclick="closeConfig()">Cancel</button>
+      <button class="btn-primary" onclick="saveConfig()">Save & Refresh Data</button>
+    </div>
+  </div>
+</div>
+
+<div class="shell">
+
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="logo-mark">CT</div>
+      <div>
+        <div class="topbar-title">CrisisTrack — Global Disruption Monitor</div>
+        <div class="topbar-sub" id="topbar-sub">Loading data… · <span id="countdown">--:--:--</span></div>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <span class="badge" id="badge-crisis">Loading…</span>
+      <span class="badge badge-info" id="badge-apis">5 APIs</span>
+      <span class="badge badge-ok" id="badge-backend">Live</span>
+      <button class="refresh-btn" id="refreshBtn" onclick="refreshAll()">⟳ Refresh</button>
+      <button class="refresh-btn" onclick="openConfig()">⚙ Config</button>
+    </div>
+  </div>
+
+  <!-- STAT ROW -->
+  <div class="stat-grid">
+    <div class="stat-card gold">
+      <div class="stat-label">Gold (XAU/USD)</div>
+      <div class="stat-val" id="gold-price"><span class="skeleton" style="width:80px"></span></div>
+      <div class="stat-delta" id="gold-delta"><span class="skeleton" style="width:120px"></span></div>
+      <div class="stat-api">Metals-API · /api/commodities/gold</div>
+    </div>
+    <div class="stat-card red">
+      <div class="stat-label">Brent crude ($/bbl)</div>
+      <div class="stat-val" id="oil-price"><span class="skeleton" style="width:80px"></span></div>
+      <div class="stat-delta" id="oil-delta"><span class="skeleton" style="width:120px"></span></div>
+      <div class="stat-api">Alpha Vantage · /api/commodities/oil</div>
+    </div>
+    <div class="stat-card purple">
+      <div class="stat-label">Bitcoin (BTC/USD)</div>
+      <div class="stat-val" id="btc-price"><span class="skeleton" style="width:80px"></span></div>
+      <div class="stat-delta" id="btc-delta"><span class="skeleton" style="width:120px"></span></div>
+      <div class="stat-api">CoinGecko · /api/commodities/btc</div>
+    </div>
+    <div class="stat-card blue">
+      <div class="stat-label">30yr mortgage rate</div>
+      <div class="stat-val" id="mort-price"><span class="skeleton" style="width:80px"></span></div>
+      <div class="stat-delta" id="mort-delta"><span class="skeleton" style="width:120px"></span></div>
+      <div class="stat-api">FRED API · /api/macro/mortgage</div>
+    </div>
+  </div>
+
+  <!-- MAIN GRID -->
+  <div class="main-grid">
+
+    <!-- TREND CHART -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Commodity price trends (% change from baseline)</span>
+        <div class="period-pills">
+          <button class="pill active" onclick="setPeriod(this,'7d')">7d</button>
+          <button class="pill" onclick="setPeriod(this,'30d')">30d</button>
+          <button class="pill" onclick="setPeriod(this,'ytd')">YTD</button>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="trendChart"></canvas>
+      </div>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-line" style="background:#c9922a"></div>Gold</div>
+        <div class="legend-item"><div class="legend-line" style="background:#d64e4e"></div>Brent crude</div>
+        <div class="legend-item"><div class="legend-line" style="background:#4a8fd4"></div>S&P 500</div>
+        <div class="legend-item"><div class="legend-line" style="background:#8b6fd4"></div>Bitcoin</div>
+      </div>
+    </div>
+
+    <!-- SAFE HAVEN RANKING -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Safe-haven ranking</span>
+        <span class="endpoint-tag">GET /api/safe-haven/compare</span>
+      </div>
+      <div id="ranking-list"><span class="loading">Loading rankings…</span></div>
+    </div>
+
+  </div>
+
+  <!-- BOTTOM GRID -->
+  <div class="bottom-grid">
+
+    <!-- DISRUPTION SCORES -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Disruption scores by region</span>
+        <span class="endpoint-tag">GET /api/disruptions</span>
+      </div>
+      <div id="disruption-list"></div>
+    </div>
+
+    <!-- GOLD/DOLLAR CORRELATION -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Gold / Dollar correlation</span>
+        <span class="endpoint-tag">GET /api/gold-dollar</span>
+      </div>
+      <div class="corr-wrap">
+        <canvas id="corrChart"></canvas>
+      </div>
+      <div class="corr-stat" id="corr-stat">
+        Correlation: <span class="corr-val" id="corr-val">—</span><br>
+        <span id="corr-detail">Loading DXY & Gold data…</span>
+      </div>
+    </div>
+
+    <!-- NEWS SENTIMENT -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Latest headlines</span>
+        <span class="endpoint-tag">GET /api/news/sentiment</span>
+      </div>
+      <div id="news-list"><span class="loading">Fetching headlines…</span></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────
+//  CONFIG & STORAGE
+// ─────────────────────────────────────────
+const KEYS = {
+  av:     () => localStorage.getItem('ct_key_av')     || '',
+  metals: () => localStorage.getItem('ct_key_metals') || '',
+  fred:   () => localStorage.getItem('ct_key_fred')   || '',
+  news:   () => localStorage.getItem('ct_key_news')   || '',
+};
+
+function openConfig() {
+  document.getElementById('key-av').value     = localStorage.getItem('ct_key_av')     || '';
+  document.getElementById('key-metals').value = localStorage.getItem('ct_key_metals') || '';
+  document.getElementById('key-fred').value   = localStorage.getItem('ct_key_fred')   || '';
+  document.getElementById('key-news').value   = localStorage.getItem('ct_key_news')   || '';
+  document.getElementById('configOverlay').classList.add('open');
+}
+function closeConfig() {
+  document.getElementById('configOverlay').classList.remove('open');
+}
+function saveConfig() {
+  localStorage.setItem('ct_key_av',     document.getElementById('key-av').value.trim());
+  localStorage.setItem('ct_key_metals', document.getElementById('key-metals').value.trim());
+  localStorage.setItem('ct_key_fred',   document.getElementById('key-fred').value.trim());
+  localStorage.setItem('ct_key_news',   document.getElementById('key-news').value.trim());
+  closeConfig();
+  refreshAll();
+}
+document.getElementById('configOverlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('configOverlay')) closeConfig();
+});
+
+// ─────────────────────────────────────────
+//  CHART COLOURS
+// ─────────────────────────────────────────
+const C = {
+  grid:   'rgba(255,255,255,0.05)',
+  text:   '#555350',
+  gold:   '#c9922a',
+  red:    '#d64e4e',
+  blue:   '#4a8fd4',
+  purple: '#8b6fd4',
+  green:  '#4aad7a',
+  gray:   '#5a5856',
+};
+
+Chart.defaults.font.family = "'IBM Plex Mono', monospace";
+Chart.defaults.font.size   = 10;
+Chart.defaults.color       = C.text;
+
+// ─────────────────────────────────────────
+//  IN-MEMORY CACHE (avoid re-fetching during pill switch)
+// ─────────────────────────────────────────
+let cache = {
+  gold: null, oil: null, sp: null, btc: null,
+  mort: null, dxy: null, news: null,
+};
+
+// ─────────────────────────────────────────
+//  TREND CHART SETUP
+// ─────────────────────────────────────────
+// Fallback/demo data used when APIs are unconfigured
+const demoDatasets = {
+  '7d': {
+    labels: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],
+    gold:   [2, 4, 6, 9, 11, 13, 15],
+    oil:    [5, 12, 18, 25, 30, 28, 32],
+    sp:     [1, -1, -3, -4, -2, -3, -4],
+    btc:    [3, -2, -5, -8, -6, -9, -10],
+  },
+  '30d': {
+    labels: Array.from({length:30},(_,i)=> i===0?'Day 1': i===14?'Day 15': i===29?'Day 30':''),
+    gold:   [0,5,10,15,18,22,25,28,30,32,35,38,40,42,44,45,47,48,50,51,52,53,54,54,55,55,55,56,55,56],
+    oil:    [0,8,15,22,30,40,48,52,55,58,60,62,65,68,70,72,68,65,70,72,73,74,74,73,75,74,74,75,75,75],
+    sp:     [0,1,2,1,0,-1,-2,-3,-2,-3,-3,-4,-3,-4,-3,-4,-3,-4,-3,-3,-4,-3,-4,-3,-4,-3,-4,-3,-3,-4],
+    btc:    [0,2,5,3,1,-2,-5,-8,-6,-9,-8,-10,-9,-10,-9,-10,-10,-9,-10,-10,-9,-10,-10,-10,-9,-10,-10,-10,-9,-10],
+  },
+  'ytd': {
+    labels: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
+    gold:   [0, 5, 12, 18, 24, 30, 36, 40, 44, 48, 52, 55],
+    oil:    [0, 3,  8, 15, 30, 48, 60, 68, 72, 74, 75, 75],
+    sp:     [0, 2,  3,  2,  1, -1, -2, -3, -3, -4, -3, -4],
+    btc:    [0, 5, 10,  8,  5, -2, -5, -8, -7, -9,-10,-10],
+  },
+};
+
+let liveDatasets = JSON.parse(JSON.stringify(demoDatasets)); // start with demo, replace on load
+let currentPeriod = '7d';
+
+const trendCtx = document.getElementById('trendChart').getContext('2d');
+let trendChart = new Chart(trendCtx, {
+  type: 'line',
+  data: {
+    labels: liveDatasets['7d'].labels,
+    datasets: [
+      { label:'Gold',  data: liveDatasets['7d'].gold,   borderColor: C.gold,   borderWidth:2, pointRadius:2.5, pointBackgroundColor: C.gold,   tension:0.4, fill:false },
+      { label:'Oil',   data: liveDatasets['7d'].oil,    borderColor: C.red,    borderWidth:2, pointRadius:2.5, pointBackgroundColor: C.red,    tension:0.4, fill:false },
+      { label:'S&P',   data: liveDatasets['7d'].sp,     borderColor: C.blue,   borderWidth:2, pointRadius:2.5, pointBackgroundColor: C.blue,   tension:0.4, fill:false },
+      { label:'BTC',   data: liveDatasets['7d'].btc,    borderColor: C.purple, borderWidth:2, pointRadius:2.5, pointBackgroundColor: C.purple, tension:0.4, fill:false },
+    ],
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false, animation: { duration: 400 },
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: '#1a1e25',
+        borderColor: 'rgba(255,255,255,0.1)',
+        borderWidth: 1,
+        titleColor: '#8a8880',
+        bodyColor: '#e2e0d8',
+        callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}%` },
+      },
+    },
+    scales: {
+      x: { grid: { color: C.grid }, ticks: { maxRotation: 0 }, border: { display: false } },
+      y: { grid: { color: C.grid }, border: { display: false }, ticks: { callback: v => v + '%' } },
+    },
+  },
+});
+
+function setPeriod(el, p) {
+  document.querySelectorAll('.pill').forEach(x => x.classList.remove('active'));
+  el.classList.add('active');
+  currentPeriod = p;
+  const d = liveDatasets[p];
+  trendChart.data.labels = d.labels;
+  trendChart.data.datasets[0].data = d.gold;
+  trendChart.data.datasets[1].data = d.oil;
+  trendChart.data.datasets[2].data = d.sp;
+  trendChart.data.datasets[3].data = d.btc;
+  trendChart.update();
+}
+
+// ─────────────────────────────────────────
+//  CORRELATION CHART
+// ─────────────────────────────────────────
+const corrCtx = document.getElementById('corrChart').getContext('2d');
+let corrChart = new Chart(corrCtx, {
+  type: 'line',
+  data: {
+    labels: ['Jan', 'Feb', 'Mar', 'Apr'],
+    datasets: [
+      { label:'Gold %', data:[0,15,35,55], borderColor: C.gold, borderWidth:2, pointRadius:3, tension:0.4, fill:false },
+      { label:'DXY %',  data:[0,-2,-6,-8], borderColor: C.gray, borderWidth:2, pointRadius:3, tension:0.4, fill:false, borderDash:[4,3] },
+    ],
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false, animation: { duration: 0 },
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: '#1a1e25',
+        borderColor: 'rgba(255,255,255,0.1)',
+        borderWidth: 1,
+        titleColor: '#8a8880',
+        bodyColor: '#e2e0d8',
+      },
+    },
+    scales: {
+      x: { grid: { color: C.grid }, border: { display: false } },
+      y: { grid: { color: C.grid }, border: { display: false }, ticks: { callback: v => v + '%' } },
+    },
+  },
+});
+
+// ─────────────────────────────────────────
+//  STATIC CONTENT (disruption scores)
+//  These are composite risk scores — no public free API provides this
+//  They're clearly labelled as editorial estimates
+// ─────────────────────────────────────────
+const disruptions = [
+  { region:'Middle East',       score:88, color: C.red  },
+  { region:'Strait of Hormuz',  score:82, color: C.red  },
+  { region:'Eastern Europe',    score:61, color: C.gold },
+  { region:'South China Sea',   score:44, color: C.gold },
+  { region:'North America',     score:22, color: C.green},
+];
+(function renderDisruptions() {
+  const dl = document.getElementById('disruption-list');
+  dl.innerHTML = '';
+  disruptions.forEach(d => {
+    const div = document.createElement('div');
+    div.className = 'dis-row';
+    div.innerHTML = `
+      <div class="dis-label-row">
+        <span class="dis-name">${d.region}</span>
+        <span class="dis-score" style="color:${d.color}">${d.score}/100</span>
+      </div>
+      <div class="dis-track"><div class="dis-fill" style="width:${d.score}%;background:${d.color}"></div></div>
+    `;
+    dl.appendChild(div);
+  });
+})();
+
+// ─────────────────────────────────────────
+//  HELPERS
+// ─────────────────────────────────────────
+function fmt(n, decimals=2) {
+  if (n == null || isNaN(n)) return '—';
+  return Number(n).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+}
+function fmtPct(n, decimals=1) {
+  if (n == null || isNaN(n)) return '—';
+  const sign = n >= 0 ? '+' : '';
+  return sign + Number(n).toFixed(decimals) + '%';
+}
+function relTime(dateStr) {
+  const diff = (Date.now() - new Date(dateStr)) / 1000;
+  if (diff < 3600)  return Math.round(diff/60)  + 'm ago';
+  if (diff < 86400) return Math.round(diff/3600) + 'h ago';
+  return Math.round(diff/86400) + 'd ago';
+}
+function pearson(xs, ys) {
+  const n = xs.length;
+  if (n < 2) return null;
+  const mx = xs.reduce((a,b)=>a+b)/n, my = ys.reduce((a,b)=>a+b)/n;
+  let num=0, dx=0, dy=0;
+  for (let i=0;i<n;i++) { num+=(xs[i]-mx)*(ys[i]-my); dx+=(xs[i]-mx)**2; dy+=(ys[i]-my)**2; }
+  return dx&&dy ? num/Math.sqrt(dx*dy) : null;
+}
+
+// ─────────────────────────────────────────
+//  API FETCH WRAPPERS
+// ─────────────────────────────────────────
+
+// 1. CoinGecko — no key required
+async function fetchBTC() {
+  const url = 'https://api.coingecko.com/api/v3/coins/bitcoin?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false';
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('CoinGecko ' + r.status);
+  const j = await r.json();
+  const price = j.market_data.current_price.usd;
+  const pct24 = j.market_data.price_change_percentage_24h;
+  const pct7  = j.market_data.price_change_percentage_7d;
+  const ath   = j.market_data.ath.usd;
+  return { price, pct24, pct7, ath };
+}
+
+// 2. Alpha Vantage — global quote (BZ for Brent, GLD for gold ETF fallback, SPY for S&P)
+async function fetchAV(symbol) {
+  const key = KEYS.av();
+  if (!key) throw new Error('No Alpha Vantage key');
+  const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${key}`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('AV HTTP ' + r.status);
+  const j = await r.json();
+  if (j['Note'] || j['Information']) throw new Error('AV rate limit');
+  const q = j['Global Quote'];
+  if (!q || !q['05. price']) throw new Error('AV no data for ' + symbol);
+  return {
+    price:  parseFloat(q['05. price']),
+    prev:   parseFloat(q['08. previous close']),
+    pct:    parseFloat(q['10. change percent']),
+    change: parseFloat(q['09. change']),
+  };
+}
+
+// Alpha Vantage — daily time series for chart (last N days)
+async function fetchAVDaily(symbol, days=30) {
+  const key = KEYS.av();
+  if (!key) throw new Error('No Alpha Vantage key');
+  const url = `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${symbol}&outputsize=compact&apikey=${key}`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('AV daily HTTP ' + r.status);
+  const j = await r.json();
+  if (j['Note'] || j['Information']) throw new Error('AV rate limit');
+  const series = j['Time Series (Daily)'];
+  if (!series) throw new Error('AV daily no data');
+  const dates = Object.keys(series).sort().slice(-days);
+  const prices = dates.map(d => parseFloat(series[d]['4. close']));
+  return { dates, prices };
+}
+
+// 3. Metals-API (metals-api.com) — Gold price
+async function fetchGoldMetals() {
+  const key = KEYS.metals();
+  if (!key) throw new Error('No Metals-API key');
+  const url = `https://metals-api.com/api/latest?access_key=${key}&base=USD&symbols=XAU`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('Metals-API HTTP ' + r.status);
+  const j = await r.json();
+  if (!j.success) throw new Error('Metals-API: ' + (j.error?.info || 'error'));
+  // XAU rate is oz per USD → invert
+  const rate = j.rates?.XAU;
+  if (!rate) throw new Error('Metals-API no XAU');
+  return { price: 1 / rate };
+}
+
+// 4. FRED — mortgage rate & DXY series
+async function fetchFRED(seriesId, limit=10) {
+  const key = KEYS.fred();
+  if (!key) throw new Error('No FRED key');
+  const url = `https://api.stlouisfed.org/fred/series/observations?series_id=${seriesId}&api_key=${key}&file_type=json&sort_order=desc&limit=${limit}`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('FRED HTTP ' + r.status);
+  const j = await r.json();
+  if (!j.observations) throw new Error('FRED no data');
+  return j.observations.filter(o => o.value !== '.').map(o => ({
+    date:  o.date,
+    value: parseFloat(o.value),
+  }));
+}
+
+// 5. NewsAPI — latest headlines (geopolitics & finance)
+async function fetchNews() {
+  const key = KEYS.news();
+  if (!key) throw new Error('No News API key');
+  // Note: NewsAPI free tier only works from localhost for development
+  // For production use NewsAPI Pro or a proxy
+  const q = encodeURIComponent('gold OR oil OR bitcoin OR geopolitical OR Fed OR mortgage');
+  const url = `https://newsapi.org/v2/everything?q=${q}&language=en&sortBy=publishedAt&pageSize=6&apiKey=${key}`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('NewsAPI HTTP ' + r.status);
+  const j = await r.json();
+  if (j.status !== 'ok') throw new Error('NewsAPI: ' + j.message);
+  return j.articles;
+}
+
+// Simple keyword sentiment
+function sentimentOf(title, desc) {
+  const text = (title + ' ' + (desc||'')).toLowerCase();
+  const pos = ['surge','rally','rise','gain','jump','soar','record','high','up','strong','buy'];
+  const neg = ['fall','drop','crash','plunge','decline','down','crisis','war','conflict','low','sell','fear'];
+  let s = 0;
+  pos.forEach(w => { if (text.includes(w)) s++; });
+  neg.forEach(w => { if (text.includes(w)) s--; });
+  return s > 0 ? 'pos' : s < 0 ? 'neg' : 'neu';
+}
+
+// ─────────────────────────────────────────
+//  RENDER FUNCTIONS
+// ─────────────────────────────────────────
+
+function renderStatCard(id, val, delta, cls) {
+  document.getElementById(id + '-price').textContent = val;
+  const el = document.getElementById(id + '-delta');
+  el.textContent = delta;
+  el.className = 'stat-delta ' + cls;
+}
+
+function renderRankings(data) {
+  const C2 = [C.gold, C.green, C.gray, C.blue, C.purple];
+  const dots = [C.gold, C.green, C.gray, C.blue, C.purple];
+  const rl = document.getElementById('ranking-list');
+  rl.innerHTML = '';
+  const sorted = [...data].sort((a, b) => b.score - a.score);
+  sorted.forEach((r, i) => {
+    const div = document.createElement('div');
+    div.className = 'asset-row';
+    const cls = (r.pct||'').toString().startsWith('-') ? 'dn' : 'up';
+    div.innerHTML = `
+      <span class="rank-num">${i + 1}</span>
+      <span class="asset-dot" style="background:${dots[i % dots.length]}"></span>
+      <span class="asset-name">${r.name}</span>
+      <div class="score-bar-wrap"><div class="score-bar-fill" style="width:${r.score}%;background:${C2[i%C2.length]}"></div></div>
+      <span class="asset-pct ${cls}">${r.pct}</span>
+    `;
+    rl.appendChild(div);
+  });
+}
+
+function renderNews(articles) {
+  const nl = document.getElementById('news-list');
+  nl.innerHTML = '';
+  if (!articles || !articles.length) {
+    nl.innerHTML = '<span class="error">No headlines available. Check NewsAPI key or use proxy.</span>';
+    return;
+  }
+  articles.slice(0, 5).forEach(n => {
+    const sent = sentimentOf(n.title, n.description);
+    const sentCls  = sent === 'pos' ? 'news-pos' : sent === 'neg' ? 'news-neg' : 'news-neu';
+    const sentLbl  = sent === 'pos' ? 'Positive' : sent === 'neg' ? 'Negative' : 'Neutral';
+    const tag = n.source?.name || '';
+    const time = relTime(n.publishedAt);
+    const div = document.createElement('div');
+    div.className = 'news-item';
+    div.innerHTML = `
+      <a class="news-headline" href="${n.url}" target="_blank" rel="noopener">${n.title}</a>
+      <div class="news-meta">
+        <span class="${sentCls}">${sentLbl}</span>
+        <span class="news-source">${tag}</span>
+        <span class="news-time">${time}</span>
+      </div>
+    `;
+    nl.appendChild(div);
+  });
+}
+
+function updateCorrChart(goldPcts, dxyPcts, labels) {
+  corrChart.data.labels = labels;
+  corrChart.data.datasets[0].data = goldPcts;
+  corrChart.data.datasets[1].data = dxyPcts;
+  corrChart.update();
+  const r = pearson(goldPcts, dxyPcts);
+  document.getElementById('corr-val').textContent = r != null ? r.toFixed(2) : '—';
+  const desc = r == null ? '' : r < -0.7 ? 'strong inverse' : r < -0.3 ? 'moderate inverse' : r < 0.3 ? 'weak/none' : 'positive';
+  const goldChg = goldPcts.length ? (goldPcts[goldPcts.length-1] - goldPcts[0]).toFixed(1) : '—';
+  const dxyChg  = dxyPcts.length  ? (dxyPcts[dxyPcts.length-1]  - dxyPcts[0]).toFixed(1)  : '—';
+  document.getElementById('corr-detail').textContent =
+    `(${desc}) · DXY ${dxyChg}% · Gold ${goldChg}%`;
+}
+
+function updateTrendChart(goldSeries, oilSeries, spSeries, btcSeries) {
+  // Build pct-change series keyed by period
+  function toPct(prices) {
+    if (!prices || prices.length < 2) return prices || [];
+    const base = prices[0];
+    return prices.map(p => +((p - base) / base * 100).toFixed(2));
+  }
+  function sliceLabels(dates, n) {
+    return dates.slice(-n).map(d => d.slice(5)); // MM-DD
+  }
+
+  const g30 = goldSeries?.prices?.slice(-30) || liveDatasets['30d'].gold;
+  const o30 = oilSeries?.prices?.slice(-30)  || liveDatasets['30d'].oil;
+  const s30 = spSeries?.prices?.slice(-30)   || liveDatasets['30d'].sp;
+  const b30 = btcSeries?.prices?.slice(-30)  || liveDatasets['30d'].btc;
+
+  const refDates = goldSeries?.dates?.slice(-30) || Array.from({length:30},(_,i)=>`Day ${i+1}`);
+
+  liveDatasets['30d'] = {
+    labels: sliceLabels(refDates, 30),
+    gold:   toPct(g30),
+    oil:    toPct(o30),
+    sp:     toPct(s30),
+    btc:    toPct(b30),
+  };
+  liveDatasets['7d'] = {
+    labels: sliceLabels(refDates.slice(-7), 7),
+    gold:   toPct(g30.slice(-7)),
+    oil:    toPct(o30.slice(-7)),
+    sp:     toPct(s30.slice(-7)),
+    btc:    toPct(b30.slice(-7)),
+  };
+
+  setPeriod(document.querySelector('.pill.active'), currentPeriod);
+}
+
+// ─────────────────────────────────────────
+//  MAIN REFRESH ORCHESTRATOR
+// ─────────────────────────────────────────
+let lastRefresh = null;
+let refreshInterval = null;
+
+async function refreshAll() {
+  const btn = document.getElementById('refreshBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinning">⟳</span> Loading';
+
+  let apiCount = 0;
+  let hasKeys = KEYS.av() || KEYS.metals() || KEYS.fred() || KEYS.news();
+
+  if (!hasKeys) {
+    document.getElementById('topbar-sub').innerHTML =
+      'Demo mode — <a href="#" onclick="openConfig();return false;" style="color:var(--gold)">configure API keys</a> for live data · <span id="countdown">--:--:--</span>';
+    renderStatCard('gold', '$3,128', '↑ Demo data', 'up');
+    renderStatCard('oil',  '$72.40', '↑ Demo data', 'up');
+    renderStatCard('btc',  '$82,000','↓ Demo data', 'dn');
+    renderStatCard('mort', '6.67%',  '↑ Demo data', 'dn');
+    renderRankings([
+      { name:'Gold',      pct:'+18.4%', score:82 },
+      { name:'10yr Bond', pct:'+4.8%',  score:68 },
+      { name:'USD (DXY)', pct:'−8.2%',  score:44 },
+      { name:'S&P 500',   pct:'−4.6%',  score:28 },
+      { name:'Bitcoin',   pct:'−11.2%', score:18 },
+    ]);
+    renderNews(null);
+    btn.disabled = false;
+    btn.innerHTML = '⟳ Refresh';
+    document.getElementById('badge-apis').textContent = '0 / 5 APIs';
+    document.getElementById('badge-apis').className = 'badge badge-warn';
+    return;
+  }
+
+  const results = {
+    btc: null, gold: null, oil: null, sp: null,
+    mort: null, dxy: null, news: null,
+    goldDaily: null, oilDaily: null, spDaily: null,
+  };
+
+  // ── BTC (always free) ──
+  try {
+    results.btc = await fetchBTC();
+    apiCount++;
+  } catch(e) { console.warn('BTC:', e.message); }
+
+  // ── Gold ──
+  try {
+    if (KEYS.metals()) {
+      results.gold = await fetchGoldMetals();
+    } else if (KEYS.av()) {
+      const gld = await fetchAV('GLD'); // GLD ETF ≈ gold price / 10
+      results.gold = { price: gld.price * 10, pct: gld.pct };
+    }
+    if (results.gold) apiCount++;
+  } catch(e) { console.warn('Gold:', e.message); }
+
+  // ── Oil (BZ = Brent Crude) ──
+  try {
+    if (KEYS.av()) {
+      results.oil = await fetchAV('BZ');
+      apiCount++;
+    }
+  } catch(e) { console.warn('Oil:', e.message); }
+
+  // ── S&P 500 (SPY ETF) ──
+  try {
+    if (KEYS.av()) {
+      results.sp = await fetchAV('SPY');
+    }
+  } catch(e) { console.warn('SP:', e.message); }
+
+  // ── Mortgage (FRED) ──
+  try {
+    if (KEYS.fred()) {
+      const mort = await fetchFRED('MORTGAGE30US', 5);
+      results.mort = mort;
+      apiCount++;
+    }
+  } catch(e) { console.warn('FRED mort:', e.message); }
+
+  // ── DXY (FRED: DTWEXBGS ≈ trade-weighted dollar) ──
+  try {
+    if (KEYS.fred()) {
+      results.dxy = await fetchFRED('DTWEXBGS', 120);
+    }
+  } catch(e) { console.warn('FRED DXY:', e.message); }
+
+  // ── Chart time series ──
+  try {
+    if (KEYS.av()) {
+      [results.goldDaily, results.oilDaily, results.spDaily] = await Promise.all([
+        fetchAVDaily('GLD', 30),
+        fetchAVDaily('BZ',  30),
+        fetchAVDaily('SPY', 30),
+      ]);
+    }
+  } catch(e) { console.warn('Chart series:', e.message); }
+
+  // ── News ──
+  try {
+    if (KEYS.news()) {
+      results.news = await fetchNews();
+      apiCount++;
+    }
+  } catch(e) { console.warn('News:', e.message); }
+
+  // ─────── RENDER ────────
+
+  // Gold
+  if (results.gold) {
+    const pct = results.gold.pct ? fmtPct(results.gold.pct) : '';
+    renderStatCard('gold', `$${fmt(results.gold.price, 0)}`, pct ? `${pct > 0 ? '↑' : '↓'} ${pct} today` : '—', (results.gold.pct||0) >= 0 ? 'up' : 'dn');
+  } else {
+    document.getElementById('gold-price').innerHTML = '<span class="error">No key</span>';
+    document.getElementById('gold-delta').textContent = 'Configure Metals-API or AV';
+  }
+
+  // Oil
+  if (results.oil) {
+    const arrow = results.oil.pct >= 0 ? '↑' : '↓';
+    renderStatCard('oil', `$${fmt(results.oil.price, 2)}`, `${arrow} ${fmtPct(results.oil.pct)} today`, results.oil.pct >= 0 ? 'up' : 'dn');
+  } else {
+    document.getElementById('oil-price').innerHTML = '<span class="error">No key / rate limit</span>';
+    document.getElementById('oil-delta').textContent = 'Configure Alpha Vantage key';
+  }
+
+  // BTC
+  if (results.btc) {
+    const arrow = results.btc.pct24 >= 0 ? '↑' : '↓';
+    renderStatCard('btc', `$${fmt(results.btc.price, 0)}`, `${arrow} ${fmtPct(results.btc.pct24)} 24h`, results.btc.pct24 >= 0 ? 'up' : 'dn');
+  } else {
+    document.getElementById('btc-price').innerHTML = '<span class="error">CoinGecko unavailable</span>';
+    document.getElementById('btc-delta').textContent = '';
+  }
+
+  // Mortgage
+  if (results.mort && results.mort.length) {
+    const latest = results.mort[0];
+    const prev   = results.mort[1];
+    const diff   = prev ? (latest.value - prev.value).toFixed(2) : null;
+    const arrow  = diff == null ? '' : parseFloat(diff) >= 0 ? '↑' : '↓';
+    renderStatCard('mort', `${fmt(latest.value, 2)}%`, diff != null ? `${arrow} ${diff > 0 ? '+' : ''}${diff}pp vs prev week` : `As of ${latest.date}`, parseFloat(diff||0) <= 0 ? 'up' : 'dn');
+  } else {
+    document.getElementById('mort-price').innerHTML = '<span class="error">No key</span>';
+    document.getElementById('mort-delta').textContent = 'Configure FRED API key';
+  }
+
+  // Rankings (use live data if available)
+  const goldPct  = results.gold?.pct   || null;
+  const oilPct   = results.oil?.pct    || null;
+  const btcPct24 = results.btc?.pct24  || null;
+  const spPct    = results.sp?.pct     || null;
+
+  const rankingData = [
+    { name:'Gold',      pct: goldPct  != null ? fmtPct(goldPct)  : '—',    score: Math.min(100, Math.max(0, 50 + (goldPct||0)*2)) },
+    { name:'10yr Bond', pct: '+—',    score: 55 },
+    { name:'USD (DXY)', pct: '—',     score: 44 },
+    { name:'S&P 500',   pct: spPct   != null ? fmtPct(spPct)   : '—',    score: Math.min(100, Math.max(0, 50 + (spPct||0)*2)) },
+    { name:'Bitcoin',   pct: btcPct24 != null ? fmtPct(btcPct24) : '—',  score: Math.min(100, Math.max(0, 50 + (btcPct24||0)*2)) },
+  ].sort((a,b) => b.score - a.score);
+  renderRankings(rankingData);
+
+  // Correlation chart (Gold vs DXY from FRED)
+  if (results.dxy && results.dxy.length >= 4) {
+    const dxyRev  = results.dxy.slice(0, 12).reverse();
+    const dxyVals = dxyRev.map(o => o.value);
+    const dxyPcts = dxyVals.map(v => +((v - dxyVals[0]) / dxyVals[0] * 100).toFixed(2));
+    const labels  = dxyRev.map(o => o.date.slice(5));
+    // Approximate gold pct if we have AV GLD daily
+    let goldPcts = new Array(dxyPcts.length).fill(0);
+    if (results.goldDaily) {
+      const gSlice = results.goldDaily.prices.slice(-dxyPcts.length);
+      goldPcts = gSlice.map(v => +((v - gSlice[0]) / gSlice[0] * 100).toFixed(2));
+    }
+    updateCorrChart(goldPcts, dxyPcts, labels);
+  }
+
+  // Trend chart
+  if (results.goldDaily || results.oilDaily || results.spDaily) {
+    // BTC daily from CoinGecko sparkline isn't fetched; use placeholder
+    updateTrendChart(
+      results.goldDaily ? { dates: results.goldDaily.dates, prices: results.goldDaily.prices.map(p => p*10) } : null,
+      results.oilDaily,
+      results.spDaily,
+      null
+    );
+  }
+
+  // News
+  if (results.news) {
+    renderNews(results.news);
+  } else if (!KEYS.news()) {
+    document.getElementById('news-list').innerHTML =
+      `<span class="error">No NewsAPI key. <a href="#" onclick="openConfig();return false;" style="color:var(--blue)">Add key →</a></span>`;
+  }
+
+  // Status badges
+  document.getElementById('badge-apis').textContent = `${apiCount} / 5 APIs`;
+  document.getElementById('badge-apis').className = apiCount >= 3 ? 'badge badge-ok' : 'badge badge-warn';
+  document.getElementById('badge-crisis').textContent = 'Crisis mode: active';
+  document.getElementById('badge-crisis').className = 'badge badge-crisis';
+  document.getElementById('badge-backend').textContent = 'Live';
+  document.getElementById('badge-backend').className = 'badge badge-ok';
+
+  lastRefresh = new Date();
+  updateTopbarSub();
+
+  btn.disabled = false;
+  btn.innerHTML = '⟳ Refresh';
+
+  // Schedule auto-refresh every 30 min
+  if (refreshInterval) clearInterval(refreshInterval);
+  refreshInterval = setInterval(refreshAll, 30 * 60 * 1000);
+}
+
+// ─────────────────────────────────────────
+//  COUNTDOWN TIMER
+// ─────────────────────────────────────────
+function updateTopbarSub() {
+  const el = document.getElementById('topbar-sub');
+  const ts = lastRefresh ? lastRefresh.toLocaleTimeString() : '—';
+  el.innerHTML = `Last refreshed: ${ts} · Next refresh in <span id="countdown">--:--</span>`;
+}
+
+setInterval(() => {
+  if (!lastRefresh) return;
+  const next = new Date(lastRefresh.getTime() + 30 * 60 * 1000);
+  const rem  = Math.max(0, next - Date.now());
+  const m = String(Math.floor(rem / 60000)).padStart(2,'0');
+  const s = String(Math.floor((rem % 60000) / 1000)).padStart(2,'0');
+  const el = document.getElementById('countdown');
+  if (el) el.textContent = `${m}:${s}`;
+}, 1000);
+
+// ─────────────────────────────────────────
+//  BOOT
+// ─────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  // Show config prompt if no keys set
+  if (!KEYS.av() && !KEYS.metals() && !KEYS.fred() && !KEYS.news()) {
+    setTimeout(openConfig, 800);
+  }
+  refreshAll();
+});
+</script>
+</body>
+</html>

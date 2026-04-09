@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CrisisTrack — Global Disruption Monitor</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg:        #0d0f12;
+    --bg2:       #13161b;
+    --bg3:       #1a1e25;
+    --border:    rgba(255,255,255,0.07);
+    --border2:   rgba(255,255,255,0.12);
+    --text:      #e2e0d8;
+    --text2:     #8a8880;
+    --text3:     #555350;
+    --gold:      #c9922a;
+    --gold-dim:  rgba(201,146,42,0.15);
+    --red:       #d64e4e;
+    --red-dim:   rgba(214,78,78,0.12);
+    --blue:      #4a8fd4;
+    --blue-dim:  rgba(74,143,212,0.12);
+    --green:     #4aad7a;
+    --green-dim: rgba(74,173,122,0.12);
+    --purple:    #8b6fd4;
+    --warn:      #c97a2a;
+    --warn-dim:  rgba(201,122,42,0.15);
+    --mono:      'IBM Plex Mono', monospace;
+    --sans:      'IBM Plex Sans', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .shell {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 20px 24px 32px;
+  }
+
+  /* ── TOP BAR ── */
+  .topbar {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 20px;
+  }
+  .topbar-left { display: flex; align-items: center; gap: 14px; }
+  .logo-mark {
+    width: 36px; height: 36px;
+    background: var(--gold-dim);
+    border: 1px solid var(--gold);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--gold);
+    letter-spacing: -1px;
+  }
+  .topbar-title { font-size: 15px; font-weight: 500; color: var(--text); letter-spacing: -0.2px; }
+  .topbar-sub { font-size: 11px; color: var(--text3); margin-top: 2px; font-family: var(--mono); }
+  .topbar-right { display: flex; gap: 8px; align-items: center; margin-top: 2px; }
+  .badge {
+    font-size: 11px; font-family: var(--mono);
+    padding: 3px 10px;
+    border-radius: 3px;
+    border: 1px solid;
+  }
+  .badge-crisis { background: var(--red-dim); color: var(--red); border-color: var(--red); }
+  .badge-ok     { background: var(--green-dim); color: var(--green); border-color: var(--green); }
+  .badge-info   { background: var(--blue-dim); color: var(--blue); border-color: rgba(74,143,212,0.3); }
+
+  /* ── STAT ROW ── */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .stat-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .stat-card:hover { border-color: var(--border2); }
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    border-radius: 8px 8px 0 0;
+  }
+  .stat-card.gold::before { background: var(--gold); }
+  .stat-card.red::before  { background: var(--red); }
+  .stat-card.purple::before { background: var(--purple); }
+  .stat-card.blue::before { background: var(--blue); }
+
+  .stat-label { font-size: 11px; color: var(--text3); font-family: var(--mono); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .stat-val   { font-size: 24px; font-weight: 300; color: var(--text); letter-spacing: -0.5px; font-family: var(--mono); }
+  .stat-delta { font-size: 11px; margin-top: 4px; font-family: var(--mono); }
+  .stat-api   { font-size: 10px; color: var(--text3); margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); font-family: var(--mono); }
+  .up { color: var(--green); }
+  .dn { color: var(--red); }
+
+  /* ── MAIN GRID ── */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .bottom-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+  }
+
+  /* ── CARDS ── */
+  .card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    transition: border-color 0.2s;
+  }
+  .card:hover { border-color: var(--border2); }
+  .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .card-title { font-size: 11px; font-weight: 500; color: var(--text2); text-transform: uppercase; letter-spacing: 0.05em; font-family: var(--mono); }
+  .endpoint-tag {
+    font-size: 10px; font-family: var(--mono);
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 2px 8px;
+    color: var(--text3);
+  }
+
+  /* ── PERIOD PILLS ── */
+  .period-pills { display: flex; gap: 4px; }
+  .pill {
+    font-size: 10px; font-family: var(--mono);
+    padding: 2px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    color: var(--text3);
+    background: transparent;
+    transition: all 0.15s;
+  }
+  .pill:hover { border-color: var(--border2); color: var(--text2); }
+  .pill.active { background: var(--gold-dim); color: var(--gold); border-color: var(--gold); }
+
+  /* ── CHART ── */
+  .chart-wrap { position: relative; height: 200px; }
+
+  /* ── LEGEND ── */
+  .legend { display: flex; gap: 16px; margin-top: 10px; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text3); font-family: var(--mono); }
+  .legend-line { width: 20px; height: 2px; border-radius: 1px; }
+
+  /* ── RANKING LIST ── */
+  .asset-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .asset-row:last-child { border-bottom: none; }
+  .rank-num { font-size: 11px; color: var(--text3); font-family: var(--mono); min-width: 16px; }
+  .asset-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .asset-name { font-size: 12px; color: var(--text); flex: 1; }
+  .score-bar-wrap { flex: 1.5; height: 4px; background: var(--bg3); border-radius: 2px; overflow: hidden; }
+  .score-bar-fill { height: 100%; border-radius: 2px; transition: width 0.6s ease; }
+  .asset-pct { font-size: 12px; font-family: var(--mono); font-weight: 500; min-width: 52px; text-align: right; }
+
+  /* ── DISRUPTION BARS ── */
+  .dis-row { margin-bottom: 12px; }
+  .dis-row:last-child { margin-bottom: 0; }
+  .dis-label-row { display: flex; justify-content: space-between; margin-bottom: 5px; }
+  .dis-name { font-size: 12px; color: var(--text2); }
+  .dis-score { font-size: 12px; font-family: var(--mono); font-weight: 500; color: var(--text); }
+  .dis-track { height: 6px; background: var(--bg3); border-radius: 3px; overflow: hidden; }
+  .dis-fill { height: 100%; border-radius: 3px; transition: width 0.6s ease; }
+
+  /* ── CORRELATION CHART ── */
+  .corr-wrap { position: relative; height: 120px; margin-bottom: 10px; }
+  .corr-stat { font-size: 12px; color: var(--text2); line-height: 1.7; }
+  .corr-val { font-weight: 500; color: var(--text); font-family: var(--mono); }
+
+  /* ── NEWS ── */
+  .news-item { padding: 9px 0; border-bottom: 1px solid var(--border); }
+  .news-item:last-child { border-bottom: none; padding-bottom: 0; }
+  .news-headline { font-size: 12px; color: var(--text); line-height: 1.5; margin-bottom: 4px; }
+  .news-meta { display: flex; gap: 10px; font-size: 10px; font-family: var(--mono); }
+  .news-neg { color: var(--red); }
+  .news-pos { color: var(--green); }
+  .news-tag { color: var(--text3); }
+  .news-time { color: var(--text3); }
+
+  /* ── SCROLLBAR ── */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 2px; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="logo-mark">CT</div>
+      <div>
+        <div class="topbar-title">CrisisTrack — Global Disruption Monitor</div>
+        <div class="topbar-sub">Last refreshed: 6 hrs ago · Next refresh in 00:23:14 · Spring Boot + 5 free APIs</div>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <span class="badge badge-crisis">Crisis mode: active</span>
+      <span class="badge badge-info">5 APIs connected</span>
+      <span class="badge badge-ok">Backend: healthy</span>
+    </div>
+  </div>
+
+  <!-- STAT ROW -->
+  <div class="stat-grid">
+    <div class="stat-card gold">
+      <div class="stat-label">Gold (XAU/USD)</div>
+      <div class="stat-val">$4,842</div>
+      <div class="stat-delta up">↑ +55.5% YTD</div>
+      <div class="stat-api">Metals-API · /api/commodities/gold</div>
+    </div>
+    <div class="stat-card red">
+      <div class="stat-label">Brent crude ($/bbl)</div>
+      <div class="stat-val">$141.20</div>
+      <div class="stat-delta up">↑ +75.0% since Feb war</div>
+      <div class="stat-api">Alpha Vantage · /api/commodities/oil</div>
+    </div>
+    <div class="stat-card purple">
+      <div class="stat-label">Bitcoin (BTC/USD)</div>
+      <div class="stat-val">$84,200</div>
+      <div class="stat-delta dn">↓ −10.4% vs Oct ATH</div>
+      <div class="stat-api">CoinGecko · /api/commodities/btc</div>
+    </div>
+    <div class="stat-card blue">
+      <div class="stat-label">30yr mortgage rate</div>
+      <div class="stat-val">6.46%</div>
+      <div class="stat-delta dn">↑ +0.48pp vs Feb</div>
+      <div class="stat-api">FRED API · /api/macro/mortgage</div>
+    </div>
+  </div>
+
+  <!-- MAIN GRID -->
+  <div class="main-grid">
+
+    <!-- TREND CHART -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Commodity price trends (% change from baseline)</span>
+        <div class="period-pills">
+          <button class="pill active" onclick="setPeriod(this,'7d')">7d</button>
+          <button class="pill" onclick="setPeriod(this,'30d')">30d</button>
+          <button class="pill" onclick="setPeriod(this,'ytd')">YTD</button>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="trendChart"></canvas>
+      </div>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-line" style="background:#c9922a"></div>Gold</div>
+        <div class="legend-item"><div class="legend-line" style="background:#d64e4e"></div>Brent crude</div>
+        <div class="legend-item"><div class="legend-line" style="background:#4a8fd4"></div>S&P 500</div>
+        <div class="legend-item"><div class="legend-line" style="background:#8b6fd4"></div>Bitcoin</div>
+      </div>
+    </div>
+
+    <!-- SAFE HAVEN RANKING -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Safe-haven ranking</span>
+        <span class="endpoint-tag">GET /api/safe-haven/compare</span>
+      </div>
+      <div id="ranking-list"></div>
+    </div>
+
+  </div>
+
+  <!-- BOTTOM GRID -->
+  <div class="bottom-grid">
+
+    <!-- DISRUPTION SCORES -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Disruption scores by region</span>
+        <span class="endpoint-tag">GET /api/disruptions</span>
+      </div>
+      <div id="disruption-list"></div>
+    </div>
+
+    <!-- GOLD/DOLLAR CORRELATION -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Gold / Dollar correlation</span>
+        <span class="endpoint-tag">GET /api/gold-dollar</span>
+      </div>
+      <div class="corr-wrap">
+        <canvas id="corrChart"></canvas>
+      </div>
+      <div class="corr-stat">
+        Correlation: <span class="corr-val">−0.82</span> (strong inverse)<br>
+        DXY down 8.2% · Gold up 55.5% · Breakdown = geopolitical signal
+      </div>
+    </div>
+
+    <!-- NEWS SENTIMENT -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Latest headlines</span>
+        <span class="endpoint-tag">GET /api/news/sentiment</span>
+      </div>
+      <div id="news-list"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const C = {
+  grid:   'rgba(255,255,255,0.05)',
+  text:   '#555350',
+  gold:   '#c9922a',
+  red:    '#d64e4e',
+  blue:   '#4a8fd4',
+  purple: '#8b6fd4',
+  green:  '#4aad7a',
+  gray:   '#5a5856',
+};
+
+Chart.defaults.font.family = "'IBM Plex Mono', monospace";
+Chart.defaults.font.size   = 10;
+Chart.defaults.color       = C.text;
+
+const datasets = {
+  '7d': {
+    labels: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],
+    gold:   [2, 4, 6, 9, 11, 13, 15],
+    oil:    [5, 12, 18, 25, 30, 28, 32],
+    sp:     [1, -1, -3, -4, -2, -3, -4],
+    btc:    [3, -2, -5, -8, -6, -9, -10],
+  },
+  '30d': {
+    labels: Array.from({length:30},(_,i)=> i===0?'Mar 9': i===14?'Mar 23': i===29?'Apr 8':''),
+    gold:   [0,5,10,15,18,22,25,28,30,32,35,38,40,42,44,45,47,48,50,51,52,53,54,54,55,55,55,56,55,56],
+    oil:    [0,8,15,22,30,40,48,52,55,58,60,62,65,68,70,72,68,65,70,72,73,74,74,73,75,74,74,75,75,75],
+    sp:     [0,1,2,1,0,-1,-2,-3,-2,-3,-3,-4,-3,-4,-3,-4,-3,-4,-3,-3,-4,-3,-4,-3,-4,-3,-4,-3,-3,-4],
+    btc:    [0,2,5,3,1,-2,-5,-8,-6,-9,-8,-10,-9,-10,-9,-10,-10,-9,-10,-10,-9,-10,-10,-10,-9,-10,-10,-10,-9,-10],
+  },
+  'ytd': {
+    labels: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
+    gold:   [0, 5, 12, 18, 24, 30, 36, 40, 44, 48, 52, 55],
+    oil:    [0, 3,  8, 15, 30, 48, 60, 68, 72, 74, 75, 75],
+    sp:     [0, 2,  3,  2,  1, -1, -2, -3, -3, -4, -3, -4],
+    btc:    [0, 5, 10,  8,  5, -2, -5, -8, -7, -9,-10,-10],
+  },
+};
+
+const trendCtx = document.getElementById('trendChart').getContext('2d');
+let trendChart = new Chart(trendCtx, {
+  type: 'line',
+  data: {
+    labels: datasets['7d'].labels,
+    datasets: [
+      { label:'Gold',  data: datasets['7d'].gold,   borderColor: C.gold,   borderWidth:2, pointRadius:2.5, pointBackgroundColor: C.gold,   tension:0.4, fill:false },
+      { label:'Oil',   data: datasets['7d'].oil,    borderColor: C.red,    borderWidth:2, pointRadius:2.5, pointBackgroundColor: C.red,    tension:0.4, fill:false },
+      { label:'S&P',   data: datasets['7d'].sp,     borderColor: C.blue,   borderWidth:2, pointRadius:2.5, pointBackgroundColor: C.blue,   tension:0.4, fill:false },
+      { label:'BTC',   data: datasets['7d'].btc,    borderColor: C.purple, borderWidth:2, pointRadius:2.5, pointBackgroundColor: C.purple, tension:0.4, fill:false },
+    ],
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false, animation: { duration: 400 },
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: '#1a1e25',
+        borderColor: 'rgba(255,255,255,0.1)',
+        borderWidth: 1,
+        titleColor: '#8a8880',
+        bodyColor: '#e2e0d8',
+        callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}%` },
+      },
+    },
+    scales: {
+      x: { grid: { color: C.grid }, ticks: { maxRotation: 0 }, border: { display: false } },
+      y: { grid: { color: C.grid }, border: { display: false }, ticks: { callback: v => v + '%' } },
+    },
+  },
+});
+
+function setPeriod(el, p) {
+  document.querySelectorAll('.pill').forEach(x => x.classList.remove('active'));
+  el.classList.add('active');
+  const d = datasets[p];
+  trendChart.data.labels = d.labels;
+  trendChart.data.datasets[0].data = d.gold;
+  trendChart.data.datasets[1].data = d.oil;
+  trendChart.data.datasets[2].data = d.sp;
+  trendChart.data.datasets[3].data = d.btc;
+  trendChart.update();
+}
+
+const corrCtx = document.getElementById('corrChart').getContext('2d');
+new Chart(corrCtx, {
+  type: 'line',
+  data: {
+    labels: ['Jan', 'Feb', 'Mar', 'Apr'],
+    datasets: [
+      { label:'Gold %', data:[0,15,35,55], borderColor: C.gold,  borderWidth:2, pointRadius:3, tension:0.4, fill:false },
+      { label:'DXY %',  data:[0,-2,-6,-8], borderColor: C.gray,  borderWidth:2, pointRadius:3, tension:0.4, fill:false, borderDash:[4,3] },
+    ],
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false, animation: { duration: 0 },
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: '#1a1e25',
+        borderColor: 'rgba(255,255,255,0.1)',
+        borderWidth: 1,
+        titleColor: '#8a8880',
+        bodyColor: '#e2e0d8',
+      },
+    },
+    scales: {
+      x: { grid: { color: C.grid }, border: { display: false } },
+      y: { grid: { color: C.grid }, border: { display: false }, ticks: { callback: v => v + '%' } },
+    },
+  },
+});
+
+const rankings = [
+  { name:'Gold',        dot: C.gold,   pct:'+55.5', score:82, color: C.gold   },
+  { name:'10yr Bond',   dot: C.green,  pct:'+4.8',  score:68, color: C.green  },
+  { name:'USD (DXY)',   dot: C.gray,   pct:'−8.2',  score:44, color: C.gray   },
+  { name:'S&P 500',     dot: C.blue,   pct:'−3.4',  score:28, color: C.blue   },
+  { name:'Bitcoin',     dot: C.purple, pct:'−10.4', score:18, color: C.purple },
+];
+const rl = document.getElementById('ranking-list');
+rankings.forEach((r, i) => {
+  const div = document.createElement('div');
+  div.className = 'asset-row';
+  const cls = r.pct.startsWith('+') ? 'up' : 'dn';
+  div.innerHTML = `
+    <span class="rank-num">${i + 1}</span>
+    <span class="asset-dot" style="background:${r.dot}"></span>
+    <span class="asset-name">${r.name}</span>
+    <div class="score-bar-wrap"><div class="score-bar-fill" style="width:${r.score}%;background:${r.color}"></div></div>
+    <span class="asset-pct ${cls}">${r.pct}%</span>
+  `;
+  rl.appendChild(div);
+});
+
+const disruptions = [
+  { region:'Middle East',       score:88, color: C.red  },
+  { region:'Strait of Hormuz',  score:82, color: C.red  },
+  { region:'Eastern Europe',    score:61, color: C.gold },
+  { region:'South China Sea',   score:44, color: C.gold },
+  { region:'North America',     score:22, color: C.green},
+];
+const dl = document.getElementById('disruption-list');
+disruptions.forEach(d => {
+  const div = document.createElement('div');
+  div.className = 'dis-row';
+  div.innerHTML = `
+    <div class="dis-label-row">
+      <span class="dis-name">${d.region}</span>
+      <span class="dis-score" style="color:${d.color}">${d.score}/100</span>
+    </div>
+    <div class="dis-track"><div class="dis-fill" style="width:${d.score}%;background:${d.color}"></div></div>
+  `;
+  dl.appendChild(div);
+});
+
+const news = [
+  { headline:'Iran ceasefire accepted — Hormuz reopening negotiations begin in Islamabad',   tag:'Geopolitical', sent:'neg', time:'2h ago' },
+  { headline:'Gold surges past $4,842 as central banks accelerate reserve diversification',   tag:'Commodity',    sent:'pos', time:'4h ago' },
+  { headline:'Mortgage rates hit 6.46% as Middle East conflict lifts Treasury yields',       tag:'Economy',      sent:'neg', time:'6h ago' },
+  { headline:'Bitcoin falls below $84k amid global risk-off, Nasdaq vol overtakes BTC 30d',  tag:'Crypto',       sent:'neg', time:'8h ago' },
+];
+const nl = document.getElementById('news-list');
+news.forEach(n => {
+  const div = document.createElement('div');
+  div.className = 'news-item';
+  const cls  = n.sent === 'pos' ? 'news-pos' : 'news-neg';
+  const lbl  = n.sent === 'pos' ? 'Positive' : 'Negative';
+  div.innerHTML = `
+    <div class="news-headline">${n.headline}</div>
+    <div class="news-meta">
+      <span class="${cls}">${lbl}</span>
+      <span class="news-tag">${n.tag}</span>
+      <span class="news-time">${n.time}</span>
+    </div>
+  `;
+  nl.appendChild(div);
+});
+</script>
+</body>
+</html>
