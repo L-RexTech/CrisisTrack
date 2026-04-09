@@ -34,11 +34,20 @@ export interface Disaster {
   status: string;
 }
 
+export interface CrudeOilData {
+  price: number;
+  change24h: number;
+  change7d: number;
+  sparkline: number[];
+  source: string;
+}
+
 export interface MarketData {
   crypto: CryptoPrice[];
   rates: ExchangeRate | null;
   earthquakes: Earthquake[];
   disasters: Disaster[];
+  crudeOil: CrudeOilData | null;
   lastUpdated: Date | null;
   loading: boolean;
   error: string | null;
@@ -116,6 +125,51 @@ async function fetchDisasters(): Promise<Disaster[]> {
   }
 }
 
+// WTI Crude Oil — Yahoo Finance unofficial chart API (free, no key required)
+// CORS-restricted from localhost; works on Vercel / GitHub Pages deployments.
+// Falls back to a null-price placeholder so the card still renders.
+async function fetchCrudeOil(): Promise<CrudeOilData> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 7000);
+  try {
+    const res = await fetch(
+      "https://query1.finance.yahoo.com/v8/finance/chart/CL=F?interval=1d&range=8d&includePrePost=false",
+      { signal: controller.signal }
+    );
+    clearTimeout(timeout);
+    if (!res.ok) throw new Error("Yahoo Finance fetch failed");
+    const json = await res.json();
+    const result = json.chart?.result?.[0];
+    if (!result) throw new Error("No result data");
+
+    const rawCloses: (number | null)[] = result.indicators?.quote?.[0]?.close ?? [];
+    const closes = rawCloses.filter((v): v is number => v != null);
+    if (closes.length < 2) throw new Error("Insufficient close data");
+
+    const current  = closes[closes.length - 1];
+    const prev     = closes[closes.length - 2];
+    const weekAgo  = closes[0];
+
+    return {
+      price:     current,
+      change24h: ((current - prev)    / prev)    * 100,
+      change7d:  ((current - weekAgo) / weekAgo) * 100,
+      sparkline: closes,
+      source:    "Yahoo Finance · free, no key",
+    };
+  } catch {
+    clearTimeout(timeout);
+    // Static fallback — price is hidden (0 = sentinel) so UI shows "—"
+    return {
+      price:     0,
+      change24h: 0,
+      change7d:  0,
+      sparkline: [],
+      source:    "Yahoo Finance · no CORS in dev",
+    };
+  }
+}
+
 // Curated list of major active conflicts — updated periodically
 export const ACTIVE_CONFLICTS = [
   { name: "Russia–Ukraine War", region: "Europe", intensity: 95, since: "Feb 2022", casualties: "~600K+", color: "#e05050" },
@@ -128,7 +182,7 @@ export const ACTIVE_CONFLICTS = [
   { name: "Mexico Cartel Wars", region: "N. America", intensity: 48, since: "ongoing", casualties: "~30K/yr", color: "#a07ae0" },
 ] as const;
 
-const CACHE_KEY = "crisis_market_cache_v6";
+const CACHE_KEY = "crisis_market_cache_v7";
 const CACHE_TTL = 5 * 60 * 1000;
 
 function getCached(): { data: Partial<MarketData>; ts: number } | null {
@@ -153,6 +207,7 @@ export function useMarketData() {
     rates: null,
     earthquakes: [],
     disasters: [],
+    crudeOil: null,
     lastUpdated: null,
     loading: true,
     error: null,
@@ -166,10 +221,11 @@ export function useMarketData() {
 
     if (isFresh && !forceRefresh && cached) {
       setState({
-        crypto: cached.data.crypto ?? [],
-        rates: cached.data.rates ?? null,
+        crypto:     cached.data.crypto     ?? [],
+        rates:      cached.data.rates      ?? null,
         earthquakes: cached.data.earthquakes ?? [],
-        disasters: cached.data.disasters ?? [],
+        disasters:  cached.data.disasters  ?? [],
+        crudeOil:   cached.data.crudeOil   ?? null,
         lastUpdated: new Date(cached.ts),
         loading: false,
         error: null,
@@ -182,21 +238,22 @@ export function useMarketData() {
       fetchRates(),
       fetchEarthquakes(),
       fetchDisasters(),
+      fetchCrudeOil(),
     ]);
 
-    const crypto    = results[0].status === "fulfilled" ? (results[0].value as CryptoPrice[]) : (cached?.data.crypto ?? []);
-    const rates     = results[1].status === "fulfilled" ? (results[1].value as ExchangeRate)  : (cached?.data.rates ?? null);
-    const earthquakes = results[2].status === "fulfilled" ? (results[2].value as Earthquake[]) : (cached?.data.earthquakes ?? []);
-    const disasters = results[3].status === "fulfilled" ? (results[3].value as Disaster[])    : (cached?.data.disasters ?? []);
+    const crypto      = results[0].status === "fulfilled" ? (results[0].value as CryptoPrice[])  : (cached?.data.crypto ?? []);
+    const rates       = results[1].status === "fulfilled" ? (results[1].value as ExchangeRate)    : (cached?.data.rates ?? null);
+    const earthquakes = results[2].status === "fulfilled" ? (results[2].value as Earthquake[])   : (cached?.data.earthquakes ?? []);
+    const disasters   = results[3].status === "fulfilled" ? (results[3].value as Disaster[])     : (cached?.data.disasters ?? []);
+    const crudeOil    = results[4].status === "fulfilled" ? (results[4].value as CrudeOilData)   : (cached?.data.crudeOil ?? null);
 
-    const errorMsg = results.some((r) => r.status === "rejected")
-      ? "Some data sources unavailable — showing cached data"
-      : null;
+    const failed = results.filter((r) => r.status === "rejected").length;
+    const errorMsg = failed > 0 ? "Some data sources unavailable — showing cached data" : null;
 
-    const newData = { crypto, rates, earthquakes, disasters };
+    const newData = { crypto, rates, earthquakes, disasters, crudeOil };
     setCache(newData);
 
-    setState({ crypto, rates, earthquakes, disasters, lastUpdated: new Date(), loading: false, error: errorMsg });
+    setState({ crypto, rates, earthquakes, disasters, crudeOil, lastUpdated: new Date(), loading: false, error: errorMsg });
   }, []);
 
   useEffect(() => {

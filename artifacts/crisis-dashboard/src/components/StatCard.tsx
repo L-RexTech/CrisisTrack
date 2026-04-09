@@ -4,7 +4,7 @@ interface StatCardProps {
   delta?: string;
   deltaUp?: boolean;
   source: string;
-  accent: "cyan" | "gold" | "red" | "green" | "purple";
+  accent: "cyan" | "gold" | "red" | "green" | "purple" | "orange";
   loading?: boolean;
   delay?: number;
 }
@@ -15,6 +15,7 @@ const accentMap = {
   red:    { top: "bg-[#e05050]", text: "text-[#e05050]", glow: "glow-red" },
   green:  { top: "bg-[#32c864]", text: "text-[#32c864]", glow: "glow-green" },
   purple: { top: "bg-[#a07ae0]", text: "text-[#a07ae0]", glow: "" },
+  orange: { top: "bg-[#e87040]", text: "text-[#e87040]", glow: "" },
 };
 
 const delayClass = ["fade-in", "fade-in-d1", "fade-in-d2", "fade-in-d3", "fade-in-d4"];

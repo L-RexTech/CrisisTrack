@@ -54,7 +54,7 @@ const FOREX_LABELS: Record<string, string> = {
 };
 
 export default function Dashboard() {
-  const { crypto, rates, earthquakes, disasters, lastUpdated, loading, error, refresh } = useMarketData();
+  const { crypto, rates, earthquakes, disasters, crudeOil, lastUpdated, loading, error, refresh } = useMarketData();
   const [now, setNow] = useState(new Date());
   const [refreshing, setRefreshing] = useState(false);
 
@@ -68,6 +68,8 @@ export default function Dashboard() {
   const gold = crypto.find((c) => c.id === "pax-gold");
 
   const majorQuakes = earthquakes.filter((e) => e.magnitude >= 4.5).slice(0, 7);
+
+  const oilAvailable = crudeOil && crudeOil.price > 0;
 
   async function handleRefresh() {
     setRefreshing(true);
@@ -112,7 +114,7 @@ export default function Dashboard() {
               Live monitoring
             </span>
             <span className="font-mono text-[11px] px-2.5 py-1 rounded border border-white/[0.12] bg-white/[0.04] text-white/40">
-              4 APIs connected
+              5 APIs connected
             </span>
             <button
               onClick={handleRefresh}
@@ -126,7 +128,7 @@ export default function Dashboard() {
         </div>
 
         {/* ── STAT CARDS ── */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2.5 mb-3">
           <StatCard
             label="Bitcoin (BTC/USD)"
             value={btc ? `$${fmt(btc.current_price)}` : "—"}
@@ -152,10 +154,18 @@ export default function Dashboard() {
             accent="gold" loading={loading && !gold} delay={2}
           />
           <StatCard
+            label="WTI Crude Oil (USD/bbl)"
+            value={oilAvailable ? `$${fmt(crudeOil!.price, 2)}` : "—"}
+            delta={oilAvailable ? `${crudeOil!.change24h.toFixed(2)}% 24h` : undefined}
+            deltaUp={oilAvailable ? crudeOil!.change24h >= 0 : undefined}
+            source={crudeOil?.source ?? "Yahoo Finance · free, no key"}
+            accent="orange" loading={loading && !crudeOil} delay={3}
+          />
+          <StatCard
             label="EUR / USD"
             value={rates ? `${(1 / rates.rates.EUR).toFixed(4)}` : "—"}
             source="open.er-api.com · free, no key"
-            accent="green" loading={loading && !rates} delay={3}
+            accent="green" loading={loading && !rates} delay={4}
           />
         </div>
 
@@ -166,12 +176,12 @@ export default function Dashboard() {
               <span className="font-mono text-[11px] uppercase tracking-widest text-white/40">
                 7-Day Price Trend (% change from open)
               </span>
-              <span className="font-mono text-[10px] px-2 py-0.5 rounded border border-white/[0.08] bg-white/[0.03] text-white/25">CoinGecko Sparkline</span>
+              <span className="font-mono text-[10px] px-2 py-0.5 rounded border border-white/[0.08] bg-white/[0.03] text-white/25">CoinGecko · Yahoo Finance</span>
             </div>
-            <TrendChart crypto={crypto} />
+            <TrendChart crypto={crypto} crudeOilSparkline={oilAvailable ? crudeOil!.sparkline : undefined} />
           </div>
 
-          {/* Safe-haven ranking */}
+          {/* Asset ranking */}
           <div className="rounded-lg border border-white/[0.07] bg-[#0d1117] p-4 fade-in-d2">
             <div className="flex items-center justify-between mb-3">
               <span className="font-mono text-[11px] uppercase tracking-widest text-white/40">Asset Performance</span>
@@ -184,25 +194,45 @@ export default function Dashboard() {
                 </div>
               ))
             ) : (
-              crypto.slice(0, 5).map((c, i) => {
-                const pct = c.price_change_percentage_24h;
-                const up = pct >= 0;
-                const barPct = Math.min(100, Math.abs(pct) * 8);
-                return (
-                  <div key={c.id} className="flex items-center gap-2.5 py-2 border-b border-white/[0.05] last:border-0"
-                    data-testid={`asset-row-${c.id}`}>
-                    <span className="font-mono text-[11px] text-white/25 w-4">{i + 1}</span>
-                    <span className={`w-2 h-2 rounded-full flex-shrink-0 ${up ? "bg-[#32c864]" : "bg-[#e05050]"}`} />
-                    <span className="text-[12px] text-white/80 flex-1 truncate">{c.name}</span>
-                    <div className="w-14 h-1 bg-white/[0.05] rounded overflow-hidden">
-                      <div className={`h-full rounded transition-all duration-700 ${up ? "bg-[#32c864]" : "bg-[#e05050]"}`} style={{ width: `${barPct}%` }} />
+              <>
+                {crypto.slice(0, 5).map((c, i) => {
+                  const pct = c.price_change_percentage_24h;
+                  const up = pct >= 0;
+                  const barPct = Math.min(100, Math.abs(pct) * 8);
+                  return (
+                    <div key={c.id} className="flex items-center gap-2.5 py-2 border-b border-white/[0.05] last:border-0"
+                      data-testid={`asset-row-${c.id}`}>
+                      <span className="font-mono text-[11px] text-white/25 w-4">{i + 1}</span>
+                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${up ? "bg-[#32c864]" : "bg-[#e05050]"}`} />
+                      <span className="text-[12px] text-white/80 flex-1 truncate">{c.name}</span>
+                      <div className="w-14 h-1 bg-white/[0.05] rounded overflow-hidden">
+                        <div className={`h-full rounded transition-all duration-700 ${up ? "bg-[#32c864]" : "bg-[#e05050]"}`} style={{ width: `${barPct}%` }} />
+                      </div>
+                      <span className={`font-mono text-[11px] font-medium min-w-[50px] text-right ${up ? "text-[#32c864]" : "text-[#e05050]"}`}>
+                        {pct >= 0 ? "+" : ""}{pct.toFixed(2)}%
+                      </span>
                     </div>
-                    <span className={`font-mono text-[11px] font-medium min-w-[50px] text-right ${up ? "text-[#32c864]" : "text-[#e05050]"}`}>
-                      {pct >= 0 ? "+" : ""}{pct.toFixed(2)}%
-                    </span>
-                  </div>
-                );
-              })
+                  );
+                })}
+                {oilAvailable && (() => {
+                  const pct = crudeOil!.change24h;
+                  const up = pct >= 0;
+                  const barPct = Math.min(100, Math.abs(pct) * 8);
+                  return (
+                    <div className="flex items-center gap-2.5 py-2 border-t border-white/[0.05]" data-testid="asset-row-crude">
+                      <span className="font-mono text-[11px] text-white/25 w-4">{crypto.slice(0, 5).length + 1}</span>
+                      <span className="w-2 h-2 rounded-full flex-shrink-0 bg-[#e87040]" />
+                      <span className="text-[12px] text-white/80 flex-1 truncate">WTI Crude Oil</span>
+                      <div className="w-14 h-1 bg-white/[0.05] rounded overflow-hidden">
+                        <div className={`h-full rounded transition-all duration-700 ${up ? "bg-[#32c864]" : "bg-[#e05050]"}`} style={{ width: `${barPct}%` }} />
+                      </div>
+                      <span className={`font-mono text-[11px] font-medium min-w-[50px] text-right ${up ? "text-[#32c864]" : "text-[#e05050]"}`}>
+                        {pct >= 0 ? "+" : ""}{pct.toFixed(2)}%
+                      </span>
+                    </div>
+                  );
+                })()}
+              </>
             )}
             {gold && gold.sparkline_in_7d && (
               <div className="mt-3 pt-3 border-t border-white/[0.06]">
@@ -384,10 +414,10 @@ export default function Dashboard() {
           <div className="rounded-lg border border-white/[0.07] bg-[#0d1117] p-4 fade-in-d5">
             <div className="flex items-center justify-between mb-3">
               <span className="font-mono text-[11px] uppercase tracking-widest text-white/40">Market Snapshot</span>
-              <span className="font-mono text-[10px] px-2 py-0.5 rounded border border-white/[0.08] bg-white/[0.03] text-white/25">CoinGecko</span>
+              <span className="font-mono text-[10px] px-2 py-0.5 rounded border border-white/[0.08] bg-white/[0.03] text-white/25">CoinGecko · Yahoo</span>
             </div>
             {loading && !crypto.length ? (
-              Array.from({ length: 3 }).map((_, i) => (
+              Array.from({ length: 4 }).map((_, i) => (
                 <div key={i} className="mb-3"><div className="skeleton h-3 w-full rounded" /></div>
               ))
             ) : (
@@ -414,6 +444,26 @@ export default function Dashboard() {
                     </div>
                   </div>
                 ))}
+                {oilAvailable && (
+                  <div className="flex items-center justify-between pt-2 border-t border-white/[0.06]" data-testid="snapshot-crude">
+                    <div>
+                      <div className="text-[12px] text-white/70 font-medium">WTI</div>
+                      <div className="font-mono text-[10px] text-white/25">crude oil · per bbl</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-mono text-[13px] text-white/90">${fmt(crudeOil!.price, 2)}</div>
+                      {crudeOil!.sparkline.length > 1 && (
+                        <div className="w-[80px]">
+                          <SparkLine
+                            data={crudeOil!.sparkline}
+                            color={crudeOil!.change24h >= 0 ? "#32c864" : "#e05050"}
+                            height={28}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             <div className="mt-4 pt-3 border-t border-white/[0.06]">
