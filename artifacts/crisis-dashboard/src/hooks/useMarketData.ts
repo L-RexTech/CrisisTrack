@@ -125,48 +125,52 @@ async function fetchDisasters(): Promise<Disaster[]> {
   }
 }
 
-// WTI Crude Oil — Yahoo Finance unofficial chart API (free, no key required)
-// CORS-restricted from localhost; works on Vercel / GitHub Pages deployments.
-// Falls back to a null-price placeholder so the card still renders.
+// WTI Crude Oil — Yahoo Finance unofficial chart API.
+// Yahoo Finance blocks direct browser CORS requests from all origins.
+// We route through corsproxy.io (free, no key, no registration required).
+const YAHOO_OIL_URL = "https://query1.finance.yahoo.com/v8/finance/chart/CL=F?interval=1d&range=8d&includePrePost=false";
+
+async function tryFetchOil(url: string, signal: AbortSignal): Promise<CrudeOilData> {
+  const res = await fetch(url, { signal });
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  const json = await res.json();
+  const result = json.chart?.result?.[0];
+  if (!result) throw new Error("No result data");
+  const rawCloses: (number | null)[] = result.indicators?.quote?.[0]?.close ?? [];
+  const closes = rawCloses.filter((v): v is number => v != null);
+  if (closes.length < 2) throw new Error("Insufficient data");
+  const current = closes[closes.length - 1];
+  const prev    = closes[closes.length - 2];
+  const weekAgo = closes[0];
+  return {
+    price:     current,
+    change24h: ((current - prev)    / prev)    * 100,
+    change7d:  ((current - weekAgo) / weekAgo) * 100,
+    sparkline: closes,
+    source:    "Yahoo Finance · free, no key",
+  };
+}
+
 async function fetchCrudeOil(): Promise<CrudeOilData> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 7000);
+  const timeout = setTimeout(() => controller.abort(), 10000);
   try {
-    const res = await fetch(
-      "https://query1.finance.yahoo.com/v8/finance/chart/CL=F?interval=1d&range=8d&includePrePost=false",
-      { signal: controller.signal }
-    );
+    // Try direct first (works in some environments)
+    try {
+      const data = await tryFetchOil(YAHOO_OIL_URL, controller.signal);
+      clearTimeout(timeout);
+      return data;
+    } catch {
+      // Direct blocked — fall through to CORS proxy
+    }
+    // Route through corsproxy.io (free, no key, no registration)
+    const proxied = "https://corsproxy.io/?" + encodeURIComponent(YAHOO_OIL_URL);
+    const data = await tryFetchOil(proxied, controller.signal);
     clearTimeout(timeout);
-    if (!res.ok) throw new Error("Yahoo Finance fetch failed");
-    const json = await res.json();
-    const result = json.chart?.result?.[0];
-    if (!result) throw new Error("No result data");
-
-    const rawCloses: (number | null)[] = result.indicators?.quote?.[0]?.close ?? [];
-    const closes = rawCloses.filter((v): v is number => v != null);
-    if (closes.length < 2) throw new Error("Insufficient close data");
-
-    const current  = closes[closes.length - 1];
-    const prev     = closes[closes.length - 2];
-    const weekAgo  = closes[0];
-
-    return {
-      price:     current,
-      change24h: ((current - prev)    / prev)    * 100,
-      change7d:  ((current - weekAgo) / weekAgo) * 100,
-      sparkline: closes,
-      source:    "Yahoo Finance · free, no key",
-    };
+    return data;
   } catch {
     clearTimeout(timeout);
-    // Static fallback — price is hidden (0 = sentinel) so UI shows "—"
-    return {
-      price:     0,
-      change24h: 0,
-      change7d:  0,
-      sparkline: [],
-      source:    "Yahoo Finance · no CORS in dev",
-    };
+    return { price: 0, change24h: 0, change7d: 0, sparkline: [], source: "Yahoo Finance · unavailable" };
   }
 }
 
@@ -182,7 +186,7 @@ export const ACTIVE_CONFLICTS = [
   { name: "Mexico Cartel Wars", region: "N. America", intensity: 48, since: "ongoing", casualties: "~30K/yr", color: "#a07ae0" },
 ] as const;
 
-const CACHE_KEY = "crisis_market_cache_v7";
+const CACHE_KEY = "crisis_market_cache_v8";
 const CACHE_TTL = 5 * 60 * 1000;
 
 function getCached(): { data: Partial<MarketData>; ts: number } | null {
