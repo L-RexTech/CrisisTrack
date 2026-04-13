@@ -7,9 +7,9 @@ interface TrendChartProps {
 }
 
 const CRYPTO_LINES = [
-  { id: "bitcoin",  color: "#dca028", label: "BTC" },
-  { id: "ethereum", color: "#00c8ff", label: "ETH" },
-  { id: "pax-gold", color: "#c8a032", label: "XAU (PAXG)" },
+  { id: "bitcoin",  color: "#f97316", label: "BTC" },   // Bitcoin orange
+  { id: "ethereum", color: "#00c8ff", label: "ETH" },   // cyan (unchanged)
+  { id: "pax-gold", color: "#fde047", label: "XAU (PAXG)" }, // bright yellow-gold
 ];
 
 const OIL_COLOR = "#e87040";
