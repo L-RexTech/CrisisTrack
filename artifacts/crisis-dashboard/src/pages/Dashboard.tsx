@@ -237,7 +237,7 @@ export default function Dashboard() {
             {gold && gold.sparkline_in_7d && (
               <div className="mt-3 pt-3 border-t border-white/[0.06]">
                 <div className="font-mono text-[10px] text-white/25 mb-1.5">Gold (PAXG) 7d</div>
-                <SparkLine data={gold.sparkline_in_7d.price} color="#c8a032" height={34} />
+                <SparkLine data={gold.sparkline_in_7d.price} color="#fde047" height={34} />
               </div>
             )}
           </div>
