@@ -1,3 +1,5 @@
 {
+  "buildCommand": "cd ../.. && pnpm install && pnpm --filter @workspace/crisis-dashboard run build",
+  "outputDirectory": "dist/public",
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
 }
