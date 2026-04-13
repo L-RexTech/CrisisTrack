@@ -125,15 +125,12 @@ async function fetchDisasters(): Promise<Disaster[]> {
   }
 }
 
-// WTI Crude Oil — Yahoo Finance unofficial chart API.
-// Yahoo Finance blocks direct browser CORS requests from all origins.
-// We route through corsproxy.io (free, no key, no registration required).
+// WTI Crude Oil — Yahoo Finance chart data.
+// Yahoo Finance blocks direct browser CORS requests, so we route through
+// allorigins.win (free, no key, no registration — adds CORS headers transparently).
 const YAHOO_OIL_URL = "https://query1.finance.yahoo.com/v8/finance/chart/CL=F?interval=1d&range=8d&includePrePost=false";
 
-async function tryFetchOil(url: string, signal: AbortSignal): Promise<CrudeOilData> {
-  const res = await fetch(url, { signal });
-  if (!res.ok) throw new Error("HTTP " + res.status);
-  const json = await res.json();
+function parseOilJson(json: any): CrudeOilData {
   const result = json.chart?.result?.[0];
   if (!result) throw new Error("No result data");
   const rawCloses: (number | null)[] = result.indicators?.quote?.[0]?.close ?? [];
@@ -153,25 +150,30 @@ async function tryFetchOil(url: string, signal: AbortSignal): Promise<CrudeOilDa
 
 async function fetchCrudeOil(): Promise<CrudeOilData> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000);
-  try {
-    // Try direct first (works in some environments)
+  const timeout = setTimeout(() => controller.abort(), 12000);
+
+  const urls = [
+    // allorigins.win: free CORS proxy, works from all browser origins, no key
+    "https://api.allorigins.win/raw?url=" + encodeURIComponent(YAHOO_OIL_URL),
+    // Direct as last resort (works in some non-browser environments)
+    YAHOO_OIL_URL,
+  ];
+
+  for (const url of urls) {
     try {
-      const data = await tryFetchOil(YAHOO_OIL_URL, controller.signal);
+      const res = await fetch(url, { signal: controller.signal });
+      if (!res.ok) continue;
+      const json = await res.json();
+      const data = parseOilJson(json);
       clearTimeout(timeout);
       return data;
     } catch {
-      // Direct blocked — fall through to CORS proxy
+      // try next url
     }
-    // Route through corsproxy.io (free, no key, no registration)
-    const proxied = "https://corsproxy.io/?" + encodeURIComponent(YAHOO_OIL_URL);
-    const data = await tryFetchOil(proxied, controller.signal);
-    clearTimeout(timeout);
-    return data;
-  } catch {
-    clearTimeout(timeout);
-    return { price: 0, change24h: 0, change7d: 0, sparkline: [], source: "Yahoo Finance · unavailable" };
   }
+
+  clearTimeout(timeout);
+  return { price: 0, change24h: 0, change7d: 0, sparkline: [], source: "Yahoo Finance · unavailable" };
 }
 
 // Curated list of major active conflicts — updated periodically
@@ -186,7 +188,7 @@ export const ACTIVE_CONFLICTS = [
   { name: "Mexico Cartel Wars", region: "N. America", intensity: 48, since: "ongoing", casualties: "~30K/yr", color: "#a07ae0" },
 ] as const;
 
-const CACHE_KEY = "crisis_market_cache_v8";
+const CACHE_KEY = "crisis_market_cache_v9";
 const CACHE_TTL = 5 * 60 * 1000;
 
 function getCached(): { data: Partial<MarketData>; ts: number } | null {
