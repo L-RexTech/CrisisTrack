@@ -161,35 +161,40 @@ async function fetchWithTimeout(url: string, ms: number): Promise<Response> {
   }
 }
 
-// Free CORS proxies — tried in order.  corsproxy.io allows all browser
-// origins (HTTPS) for free with no API key.  allorigins.win is the backup.
-const CORS_PROXIES = [
-  (url: string) => "https://corsproxy.io/?url=" + encodeURIComponent(url),
-  (url: string) => "https://api.allorigins.win/raw?url=" + encodeURIComponent(url),
+// Ordered list of crude oil data endpoints.
+// 1. Vercel Edge Function (/api/crude-oil) — server-side fetch, no CORS issues.
+//    Returns 404 in local dev / GitHub Pages, so we fall through to proxies.
+// 2. corsproxy.io — free browser CORS proxy, no key required.
+// 3. allorigins.win — backup CORS proxy, no key required.
+const OIL_ENDPOINTS: Array<{ url: () => string; parse: (j: any) => CrudeOilData }> = [
+  {
+    url: () => "/api/crude-oil",
+    parse: (j) => parseOilJson(j),
+  },
+  {
+    url: () => "https://corsproxy.io/?url=" + encodeURIComponent(YAHOO_OIL_URL),
+    parse: (j) => parseOilJson(j),
+  },
+  {
+    url: () => "https://api.allorigins.win/raw?url=" + encodeURIComponent(YAHOO_OIL_URL),
+    parse: (j) => parseOilJson(j),
+  },
 ];
 
 async function fetchCrudeOil(): Promise<CrudeOilData> {
-  for (const makeProxy of CORS_PROXIES) {
-    const proxyUrl = makeProxy(YAHOO_OIL_URL);
+  for (const ep of OIL_ENDPOINTS) {
+    const url = ep.url();
     try {
-      const res = await fetchWithTimeout(proxyUrl, 6000);
+      const res = await fetchWithTimeout(url, 6000);
       if (!res.ok) {
-        console.warn("[CrudeOil] proxy returned", res.status, proxyUrl);
+        console.warn("[CrudeOil] non-OK", res.status, url);
         continue;
       }
       const json = await res.json();
-      return parseOilJson(json);
+      return ep.parse(json);
     } catch (err) {
-      console.warn("[CrudeOil] proxy failed:", proxyUrl, err);
+      console.warn("[CrudeOil] failed:", url, err);
     }
-  }
-
-  // Direct request as absolute last resort (blocked in most browsers by CORS)
-  try {
-    const res = await fetchWithTimeout(YAHOO_OIL_URL, 5000);
-    if (res.ok) return parseOilJson(await res.json());
-  } catch (err) {
-    console.warn("[CrudeOil] direct request also failed:", err);
   }
 
   return { price: 0, change24h: 0, change7d: 0, sparkline: [], source: "Yahoo Finance · unavailable" };
@@ -207,7 +212,7 @@ export const ACTIVE_CONFLICTS = [
   { name: "Mexico Cartel Wars", region: "N. America", intensity: 48, since: "ongoing", casualties: "~30K/yr", color: "#a07ae0" },
 ] as const;
 
-const CACHE_KEY = "crisis_market_cache_v9";
+const CACHE_KEY = "crisis_market_cache_v10";
 const CACHE_TTL = 5 * 60 * 1000;
 
 function getCached(): { data: Partial<MarketData>; ts: number } | null {
