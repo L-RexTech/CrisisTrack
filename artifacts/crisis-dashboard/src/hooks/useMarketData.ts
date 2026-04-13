@@ -148,10 +148,20 @@ function parseOilJson(json: any): CrudeOilData {
   };
 }
 
-async function fetchCrudeOil(): Promise<CrudeOilData> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12000);
+async function fetchWithTimeout(url: string, ms: number): Promise<Response> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    clearTimeout(t);
+    return res;
+  } catch (e) {
+    clearTimeout(t);
+    throw e;
+  }
+}
 
+async function fetchCrudeOil(): Promise<CrudeOilData> {
   const urls = [
     // allorigins.win: free CORS proxy, works from all browser origins, no key
     "https://api.allorigins.win/raw?url=" + encodeURIComponent(YAHOO_OIL_URL),
@@ -161,18 +171,15 @@ async function fetchCrudeOil(): Promise<CrudeOilData> {
 
   for (const url of urls) {
     try {
-      const res = await fetch(url, { signal: controller.signal });
+      const res = await fetchWithTimeout(url, 5000); // 5s per attempt
       if (!res.ok) continue;
       const json = await res.json();
-      const data = parseOilJson(json);
-      clearTimeout(timeout);
-      return data;
+      return parseOilJson(json);
     } catch {
       // try next url
     }
   }
 
-  clearTimeout(timeout);
   return { price: 0, change24h: 0, change7d: 0, sparkline: [], source: "Yahoo Finance · unavailable" };
 }
 
@@ -227,11 +234,11 @@ export function useMarketData() {
 
     if (isFresh && !forceRefresh && cached) {
       setState({
-        crypto:     cached.data.crypto     ?? [],
-        rates:      cached.data.rates      ?? null,
+        crypto:      cached.data.crypto      ?? [],
+        rates:       cached.data.rates       ?? null,
         earthquakes: cached.data.earthquakes ?? [],
-        disasters:  cached.data.disasters  ?? [],
-        crudeOil:   cached.data.crudeOil   ?? null,
+        disasters:   cached.data.disasters   ?? [],
+        crudeOil:    cached.data.crudeOil    ?? null,
         lastUpdated: new Date(cached.ts),
         loading: false,
         error: null,
@@ -239,27 +246,40 @@ export function useMarketData() {
       return;
     }
 
-    const results = await Promise.allSettled([
+    // Fetch the 4 fast sources first — render them immediately
+    const [r0, r1, r2, r3] = await Promise.allSettled([
       fetchCrypto(),
       fetchRates(),
       fetchEarthquakes(),
       fetchDisasters(),
-      fetchCrudeOil(),
     ]);
 
-    const crypto      = results[0].status === "fulfilled" ? (results[0].value as CryptoPrice[])  : (cached?.data.crypto ?? []);
-    const rates       = results[1].status === "fulfilled" ? (results[1].value as ExchangeRate)    : (cached?.data.rates ?? null);
-    const earthquakes = results[2].status === "fulfilled" ? (results[2].value as Earthquake[])   : (cached?.data.earthquakes ?? []);
-    const disasters   = results[3].status === "fulfilled" ? (results[3].value as Disaster[])     : (cached?.data.disasters ?? []);
-    const crudeOil    = results[4].status === "fulfilled" ? (results[4].value as CrudeOilData)   : (cached?.data.crudeOil ?? null);
+    const crypto      = r0.status === "fulfilled" ? (r0.value as CryptoPrice[])  : (cached?.data.crypto      ?? []);
+    const rates       = r1.status === "fulfilled" ? (r1.value as ExchangeRate)   : (cached?.data.rates       ?? null);
+    const earthquakes = r2.status === "fulfilled" ? (r2.value as Earthquake[])   : (cached?.data.earthquakes ?? []);
+    const disasters   = r3.status === "fulfilled" ? (r3.value as Disaster[])     : (cached?.data.disasters   ?? []);
+    const cachedOil   = cached?.data.crudeOil ?? null;
 
-    const failed = results.filter((r) => r.status === "rejected").length;
-    const errorMsg = failed > 0 ? "Some data sources unavailable — showing cached data" : null;
+    const failed = [r0, r1, r2, r3].filter((r) => r.status === "rejected").length;
 
-    const newData = { crypto, rates, earthquakes, disasters, crudeOil };
-    setCache(newData);
+    // Paint the page now with the fast data; crude oil card shows cached/dash until ready
+    setState((s) => ({
+      ...s,
+      crypto, rates, earthquakes, disasters,
+      crudeOil: cachedOil,
+      lastUpdated: new Date(),
+      loading: false,
+      error: failed > 0 ? "Some data sources unavailable — showing cached data" : null,
+    }));
 
-    setState({ crypto, rates, earthquakes, disasters, crudeOil, lastUpdated: new Date(), loading: false, error: errorMsg });
+    // Fetch crude oil in the background — update card when it resolves
+    fetchCrudeOil().then((crudeOil) => {
+      setState((s) => {
+        const newData = { crypto: s.crypto, rates: s.rates, earthquakes: s.earthquakes, disasters: s.disasters, crudeOil };
+        setCache(newData);
+        return { ...s, crudeOil };
+      });
+    });
   }, []);
 
   useEffect(() => {
