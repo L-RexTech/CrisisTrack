@@ -1,3 +1,5 @@
+/// <reference lib="dom" />
+
 export const config = { runtime: "edge" };
 
 const YAHOO_URL =
