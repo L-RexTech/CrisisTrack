@@ -127,7 +127,7 @@ async function fetchDisasters(): Promise<Disaster[]> {
 
 // WTI Crude Oil — Yahoo Finance chart data.
 // Yahoo Finance blocks direct browser CORS requests, so we route through
-// allorigins.win (free, no key, no registration — adds CORS headers transparently).
+// Yahoo Finance via free CORS proxies (no key, no registration required).
 const YAHOO_OIL_URL = "https://query1.finance.yahoo.com/v8/finance/chart/CL=F?interval=1d&range=8d&includePrePost=false";
 
 function parseOilJson(json: any): CrudeOilData {
@@ -161,23 +161,35 @@ async function fetchWithTimeout(url: string, ms: number): Promise<Response> {
   }
 }
 
-async function fetchCrudeOil(): Promise<CrudeOilData> {
-  const urls = [
-    // allorigins.win: free CORS proxy, works from all browser origins, no key
-    "https://api.allorigins.win/raw?url=" + encodeURIComponent(YAHOO_OIL_URL),
-    // Direct as last resort (works in some non-browser environments)
-    YAHOO_OIL_URL,
-  ];
+// Free CORS proxies — tried in order.  corsproxy.io allows all browser
+// origins (HTTPS) for free with no API key.  allorigins.win is the backup.
+const CORS_PROXIES = [
+  (url: string) => "https://corsproxy.io/?url=" + encodeURIComponent(url),
+  (url: string) => "https://api.allorigins.win/raw?url=" + encodeURIComponent(url),
+];
 
-  for (const url of urls) {
+async function fetchCrudeOil(): Promise<CrudeOilData> {
+  for (const makeProxy of CORS_PROXIES) {
+    const proxyUrl = makeProxy(YAHOO_OIL_URL);
     try {
-      const res = await fetchWithTimeout(url, 5000); // 5s per attempt
-      if (!res.ok) continue;
+      const res = await fetchWithTimeout(proxyUrl, 6000);
+      if (!res.ok) {
+        console.warn("[CrudeOil] proxy returned", res.status, proxyUrl);
+        continue;
+      }
       const json = await res.json();
       return parseOilJson(json);
-    } catch {
-      // try next url
+    } catch (err) {
+      console.warn("[CrudeOil] proxy failed:", proxyUrl, err);
     }
+  }
+
+  // Direct request as absolute last resort (blocked in most browsers by CORS)
+  try {
+    const res = await fetchWithTimeout(YAHOO_OIL_URL, 5000);
+    if (res.ok) return parseOilJson(await res.json());
+  } catch (err) {
+    console.warn("[CrudeOil] direct request also failed:", err);
   }
 
   return { price: 0, change24h: 0, change7d: 0, sparkline: [], source: "Yahoo Finance · unavailable" };
